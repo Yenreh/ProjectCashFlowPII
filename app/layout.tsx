@@ -26,7 +26,7 @@ export default function RootLayout({
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
         <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
         <Toaster richColors position="top-right" />
-        <Analytics />
+        {/* <Analytics /> */}
       </body>
     </html>
   )

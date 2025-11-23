@@ -66,7 +66,7 @@ export default function CuentasPage() {
 
   return (
     <AppLayout onTransactionCreated={fetchAccounts}>
-      <div className="container mx-auto px-4 py-8 pb-32 md:pb-8">
+      <div className="container mx-auto px-3 sm:px-4 lg:px-8 xl:px-16 py-4 sm:py-8 pb-32 md:pb-8 max-w-7xl">
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-balance">Cuentas</h1>

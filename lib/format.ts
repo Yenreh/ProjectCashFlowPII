@@ -8,7 +8,16 @@ export function formatCurrency(amount: number, currency = "COP"): string {
 }
 
 export function formatDate(date: string | Date): string {
-  const d = typeof date === "string" ? new Date(date) : date
+  let d: Date
+  if (typeof date === "string") {
+    // Parsear la fecha correctamente para evitar problemas de zona horaria
+    // La fecha viene como "YYYY-MM-DD" de la DB
+    const [year, month, day] = date.split('-').map(Number)
+    d = new Date(year, month - 1, day) // month es 0-indexed
+  } else {
+    d = date
+  }
+  
   return new Intl.DateTimeFormat("es-CO", {
     year: "numeric",
     month: "long",
@@ -17,7 +26,15 @@ export function formatDate(date: string | Date): string {
 }
 
 export function formatDateShort(date: string | Date): string {
-  const d = typeof date === "string" ? new Date(date) : date
+  let d: Date
+  if (typeof date === "string") {
+    // Parsear la fecha correctamente para evitar problemas de zona horaria
+    const [year, month, day] = date.split('-').map(Number)
+    d = new Date(year, month - 1, day) // month es 0-indexed
+  } else {
+    d = date
+  }
+  
   return new Intl.DateTimeFormat("es-CO", {
     year: "numeric",
     month: "2-digit",

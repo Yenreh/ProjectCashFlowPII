@@ -156,6 +156,7 @@ export const dbQueries = {
       SELECT t.id, t.account_id, t.category_id, t.transaction_type as type, 
              t.amount, t.description, t.transaction_date::text as date,
              t.created_at::text as created_at, t.updated_at::text as updated_at,
+             t.source, t.image_hash, t.ocr_confidence, t.edited,
              a.name as account_name,
              c.name as category_name, c.icon as category_icon, c.color as category_color
       FROM transactions t
@@ -203,11 +204,23 @@ export const dbQueries = {
     if (!sql) throw new Error("Database not available")
 
     const result = await sql.query(`
-      INSERT INTO transactions (account_id, category_id, transaction_type, amount, description, transaction_date)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO transactions (account_id, category_id, transaction_type, amount, description, transaction_date, source, image_hash, ocr_confidence, edited)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING id, account_id, category_id, transaction_type as type, amount::text, description,
-                transaction_date::text as date, created_at::text as created_at, updated_at::text as updated_at
-    `, [transaction.account_id, transaction.category_id, transaction.type, transaction.amount, transaction.description, transaction.date])
+                transaction_date::text as date, created_at::text as created_at, updated_at::text as updated_at,
+                source, image_hash, ocr_confidence, edited
+    `, [
+      transaction.account_id, 
+      transaction.category_id, 
+      transaction.type, 
+      transaction.amount, 
+      transaction.description, 
+      transaction.date,
+      transaction.source || 'manual',
+      transaction.image_hash || null,
+      transaction.ocr_confidence || null,
+      transaction.edited || false
+    ])
 
     const created = result[0] as any
     return {
@@ -247,6 +260,22 @@ export const dbQueries = {
       fields.push(`transaction_date = $${paramIndex++}`)
       values.push(updates.date)
     }
+    if (updates.source !== undefined) {
+      fields.push(`source = $${paramIndex++}`)
+      values.push(updates.source)
+    }
+    if (updates.image_hash !== undefined) {
+      fields.push(`image_hash = $${paramIndex++}`)
+      values.push(updates.image_hash)
+    }
+    if (updates.ocr_confidence !== undefined) {
+      fields.push(`ocr_confidence = $${paramIndex++}`)
+      values.push(updates.ocr_confidence)
+    }
+    if (updates.edited !== undefined) {
+      fields.push(`edited = $${paramIndex++}`)
+      values.push(updates.edited)
+    }
 
     values.push(id)
 
@@ -255,7 +284,8 @@ export const dbQueries = {
       SET ${fields.join(', ')}
       WHERE id = $${paramIndex}
       RETURNING id, account_id, category_id, transaction_type as type, amount::text, description,
-                transaction_date::text as date, created_at::text as created_at, updated_at::text as updated_at
+                transaction_date::text as date, created_at::text as created_at, updated_at::text as updated_at,
+                source, image_hash, ocr_confidence, edited
     `, values)
 
     const updated = result[0] as any
@@ -342,16 +372,17 @@ export const dbQueries = {
     if (!sql) return []
 
     let whereClause = `WHERE t.transaction_type = 'gasto'`
-    const values: any[] = []
-    let paramIndex = 1
+    const conditions: string[] = []
 
     if (filters.startDate) {
-      whereClause += ` AND t.transaction_date >= $${paramIndex++}`
-      values.push(filters.startDate)
+      conditions.push(`t.transaction_date >= '${filters.startDate}'`)
     }
     if (filters.endDate) {
-      whereClause += ` AND t.transaction_date <= $${paramIndex++}`
-      values.push(filters.endDate)
+      conditions.push(`t.transaction_date <= '${filters.endDate}'`)
+    }
+    
+    if (conditions.length > 0) {
+      whereClause += ` AND ${conditions.join(' AND ')}`
     }
 
     const query = `
@@ -359,12 +390,7 @@ export const dbQueries = {
         c.name as category_name,
         c.icon as category_icon, 
         c.color as category_color,
-        SUM(t.amount) as total,
-        (SUM(t.amount) * 100.0 / (
-          SELECT SUM(amount) 
-          FROM transactions t2 
-          ${whereClause.replace('t.', 't2.')}
-        )) as percentage
+        SUM(t.amount) as total
       FROM transactions t
       JOIN categories c ON t.category_id = c.id
       ${whereClause}
@@ -372,14 +398,22 @@ export const dbQueries = {
       ORDER BY total DESC
     `
 
-    const result = await sql.query(query, values)
-    return result.map(row => ({
-      category_name: row.category_name,
-      category_icon: row.category_icon,
-      category_color: row.category_color,
-      total: Number(row.total),
-      percentage: Number(row.percentage)
-    }))
+    const result = await sql.query(query)
+    
+    // Calcular el total para los porcentajes
+    const total = result.reduce((sum: number, row: any) => sum + Number(row.total), 0)
+    
+    return result.map(row => {
+      const amount = Number(row.total)
+      const percentage = total > 0 ? (amount / total) * 100 : 0
+      return {
+        category_name: row.category_name,
+        category_icon: row.category_icon,
+        category_color: row.category_color,
+        total: amount,
+        percentage: percentage
+      }
+    })
   },
 
   // Incomes by category report
@@ -387,16 +421,17 @@ export const dbQueries = {
     if (!sql) return []
 
     let whereClause = `WHERE t.transaction_type = 'ingreso'`
-    const values: any[] = []
-    let paramIndex = 1
+    const conditions: string[] = []
 
     if (filters.startDate) {
-      whereClause += ` AND t.transaction_date >= $${paramIndex++}`
-      values.push(filters.startDate)
+      conditions.push(`t.transaction_date >= '${filters.startDate}'`)
     }
     if (filters.endDate) {
-      whereClause += ` AND t.transaction_date <= $${paramIndex++}`
-      values.push(filters.endDate)
+      conditions.push(`t.transaction_date <= '${filters.endDate}'`)
+    }
+    
+    if (conditions.length > 0) {
+      whereClause += ` AND ${conditions.join(' AND ')}`
     }
 
     const query = `
@@ -404,12 +439,7 @@ export const dbQueries = {
         c.name as category_name,
         c.icon as category_icon, 
         c.color as category_color,
-        SUM(t.amount) as total,
-        (SUM(t.amount) * 100.0 / (
-          SELECT SUM(amount) 
-          FROM transactions t2 
-          ${whereClause.replace('t.', 't2.')}
-        )) as percentage
+        SUM(t.amount) as total
       FROM transactions t
       JOIN categories c ON t.category_id = c.id
       ${whereClause}
@@ -417,14 +447,22 @@ export const dbQueries = {
       ORDER BY total DESC
     `
 
-    const result = await sql.query(query, values)
-    return result.map(row => ({
-      category_name: row.category_name,
-      category_icon: row.category_icon,
-      category_color: row.category_color,
-      total: Number(row.total),
-      percentage: Number(row.percentage)
-    }))
+    const result = await sql.query(query)
+    
+    // Calcular el total para los porcentajes
+    const total = result.reduce((sum: number, row: any) => sum + Number(row.total), 0)
+    
+    return result.map(row => {
+      const amount = Number(row.total)
+      const percentage = total > 0 ? (amount / total) * 100 : 0
+      return {
+        category_name: row.category_name,
+        category_icon: row.category_icon,
+        category_color: row.category_color,
+        total: amount,
+        percentage: percentage
+      }
+    })
   }
 }
 

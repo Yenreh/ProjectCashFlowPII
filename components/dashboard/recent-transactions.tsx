@@ -91,22 +91,22 @@ export function RecentTransactions({ refreshTrigger, onDataChange }: RecentTrans
   return (
     <>
       <Card className="overflow-hidden">
-      <CardHeader className="flex flex-row items-center justify-between pb-3">
-        <CardTitle className="text-lg">Transacciones Recientes</CardTitle>
-        <Button variant="ghost" size="sm" asChild className="h-8">
+      <CardHeader className="flex flex-row items-center justify-between pb-3 overflow-hidden">
+        <CardTitle className="text-lg truncate min-w-0">Transacciones Recientes</CardTitle>
+        <Button variant="ghost" size="sm" asChild className="h-8 flex-shrink-0">
           <Link href="/transacciones">
             <span className="hidden sm:inline">Ver todas</span>
             <ArrowRight className="h-4 w-4 sm:ml-2" />
           </Link>
         </Button>
       </CardHeader>
-      <CardContent className="overflow-hidden">
+      <CardContent className="overflow-x-hidden">
         {loading ? (
           <div className="text-center py-8 text-muted-foreground">Cargando...</div>
         ) : transactions.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground text-sm">No hay transacciones recientes</div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-2 overflow-x-hidden">
             {transactions.map((transaction) => (
               <TransactionItem 
                 key={transaction.id} 

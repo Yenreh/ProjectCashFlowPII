@@ -44,11 +44,16 @@ export function TransactionList({
         const totalExpense = dayTransactions.filter((t) => t.type === "gasto").reduce((sum, t) => sum + t.amount, 0)
         const dayBalance = totalIncome - totalExpense
 
+        // Parsear la fecha correctamente para evitar problemas de zona horaria
+        // La fecha viene como "YYYY-MM-DD" de la DB
+        const [year, month, day] = date.split('-').map(Number)
+        const dateObj = new Date(year, month - 1, day) // month es 0-indexed
+
         return (
           <div key={date}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold text-sm text-muted-foreground">
-                {new Date(date).toLocaleDateString("es-ES", {
+                {dateObj.toLocaleDateString("es-ES", {
                   weekday: "long",
                   year: "numeric",
                   month: "long",

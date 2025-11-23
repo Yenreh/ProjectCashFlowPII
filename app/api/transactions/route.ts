@@ -65,9 +65,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { account_id, category_id, type, amount, description, date } = body
-
-    console.log("[Transaction POST] 📝 Received data:", { account_id, category_id, type, amount, date })
+    const { account_id, category_id, type, amount, description, date, source, image_hash, ocr_confidence, edited } = body
 
     // Validation
     if (!account_id || !category_id || !type || !amount || !date) {
@@ -102,9 +100,11 @@ export async function POST(request: Request) {
       amount: amountNum,
       description: description || null,
       date,
+      source: source || 'manual',
+      image_hash: image_hash || null,
+      ocr_confidence: ocr_confidence || null,
+      edited: edited || false,
     }
-
-    console.log("[Transaction POST] ✅ Validated data:", newTransactionData)
 
     let newTransaction: Transaction
 
@@ -118,8 +118,6 @@ export async function POST(request: Request) {
         if (!account) {
           return NextResponse.json({ error: "Cuenta no encontrada" }, { status: 404 })
         }
-
-        console.log("[Transaction POST] 💰 Account balance before:", formatBalanceForLog(account.balance))
         
         // Crear la transacción
         newTransaction = await dbQueries.createTransaction(newTransactionData)
@@ -130,12 +128,9 @@ export async function POST(request: Request) {
           newTransactionData.amount,
           newTransactionData.type
         )
-
-        console.log("[Transaction POST] ⚖️  New balance after:", formatBalanceForLog(newBalance))
         
         // Actualizar el balance de la cuenta
         await dbQueries.updateAccount(newTransactionData.account_id, { balance: newBalance })
-        console.log("[Transaction POST] ✅ Updated account balance to:", formatBalanceForLog(newBalance))
       } catch (error) {
         console.error("[v0] Database error, falling back to mock data:", error)
         // Fallback to mock data creation

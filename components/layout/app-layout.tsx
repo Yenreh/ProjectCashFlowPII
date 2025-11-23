@@ -3,6 +3,7 @@
 import { MainNav } from "@/components/layout/main-nav"
 import { MobileNav } from "@/components/layout/mobile-nav"
 import { VoiceAssistantButton } from "@/components/voice/voice-assistant-button"
+import { FinancialChat } from "@/components/chat/financial-chat"
 
 interface AppLayoutProps {
   children: React.ReactNode
@@ -18,6 +19,7 @@ export function AppLayout({ children, onTransactionCreated }: AppLayoutProps) {
       </main>
       <MobileNav />
       <VoiceAssistantButton onTransactionCreated={onTransactionCreated} />
+      <FinancialChat />
     </div>
   )
 }

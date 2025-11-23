@@ -31,6 +31,11 @@ export interface Transaction {
   date: string
   created_at: string
   updated_at: string
+  // Campos para soporte de recibos escaneados
+  source?: "manual" | "voice" | "image"
+  image_hash?: string | null
+  ocr_confidence?: number | null
+  edited?: boolean
 }
 
 export interface TransactionWithDetails extends Transaction {
@@ -38,6 +43,11 @@ export interface TransactionWithDetails extends Transaction {
   category_name: string
   category_icon: string
   category_color: string
+  // Heredados de Transaction
+  source?: "manual" | "voice" | "image"
+  image_hash?: string | null
+  ocr_confidence?: number | null
+  edited?: boolean
 }
 
 export interface DashboardMetrics {

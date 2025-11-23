@@ -24,7 +24,7 @@ export function TransactionItem({ transaction, onEdit, onDelete }: TransactionIt
   const isIncome = transaction.type === "ingreso"
 
   return (
-    <div className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors">
+    <div className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors overflow-hidden">
       <div
         className="flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-xl flex-shrink-0"
         style={{ backgroundColor: `${transaction.category_color}20` }}
@@ -49,7 +49,7 @@ export function TransactionItem({ transaction, onEdit, onDelete }: TransactionIt
 
           <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
             <span
-              className={cn("font-semibold text-xs sm:text-sm whitespace-nowrap", isIncome ? "text-success" : "text-destructive")}
+              className={cn("font-semibold text-xs sm:text-sm whitespace-nowrap max-w-[100px] sm:max-w-none truncate", isIncome ? "text-success" : "text-destructive")}
             >
               {isIncome ? "+" : "-"}
               {formatCurrency(transaction.amount)}

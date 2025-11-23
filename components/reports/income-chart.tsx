@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { CategoryIcon } from "@/components/categories/category-icon"
 import { formatCurrency } from "@/lib/format"
 import type { CategoryExpense } from "@/lib/types"
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts"
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip, type PieLabelRenderProps } from "recharts"
 
 export function IncomeChart() {
   const [incomes, setIncomes] = useState<CategoryExpense[]>([])
@@ -27,11 +27,25 @@ export function IncomeChart() {
     fetchIncomes()
   }, [])
 
-  const chartData = incomes.map((income) => ({
-    name: income.category_name,
-    value: income.total,
-    color: income.category_color,
-  }))
+  const chartData = incomes.map((income, index) => {
+    // Paleta de colores fríos para ingresos (azules, verdes, morados)
+    const coolColors = [
+      'hsl(145, 60%, 45%)',  // Verde
+      'hsl(200, 70%, 50%)',  // Azul
+      'hsl(160, 65%, 45%)',  // Verde azulado
+      'hsl(220, 70%, 55%)',  // Azul intenso
+      'hsl(280, 60%, 50%)',  // Morado
+      'hsl(180, 60%, 45%)',  // Cian
+      'hsl(260, 65%, 55%)',  // Morado claro
+      'hsl(170, 60%, 50%)',  // Turquesa
+    ]
+    return {
+      name: income.category_name,
+      value: income.total,
+      color: coolColors[index % coolColors.length],
+      icon: income.category_icon,
+    }
+  })
 
   const totalIncomes = incomes.reduce((sum, income) => sum + income.total, 0)
 
@@ -48,18 +62,21 @@ export function IncomeChart() {
           <div className="text-center py-12 text-muted-foreground">No hay ingresos para mostrar</div>
         ) : (
           <>
-            <div className="h-[300px] mb-6">
+            <div className="h-[350px] mb-6">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
+                <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                   <Pie
                     data={chartData}
                     cx="50%"
                     cy="50%"
-                    labelLine={false}
-                    outerRadius={100}
+                    labelLine={true}
+                    outerRadius={110}
                     fill="#8884d8"
                     dataKey="value"
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    label={(props: PieLabelRenderProps) => {
+                      const percent = Number(props.percent ?? 0)
+                      return `${(percent * 100).toFixed(0)}%`
+                    }}
                   >
                     {chartData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
@@ -77,29 +94,42 @@ export function IncomeChart() {
               </ResponsiveContainer>
             </div>
 
-            <div className="space-y-3">
-              {incomes.map((income) => (
-                <div key={income.category_name} className="flex items-center justify-between p-3 rounded-lg border">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="flex h-10 w-10 items-center justify-center rounded-lg"
-                      style={{ backgroundColor: `${income.category_color}20` }}
-                    >
-                      <CategoryIcon iconName={income.category_icon} size={20} />
+            <div className="max-h-[230px] overflow-y-auto space-y-3 pr-2">
+              {incomes.map((income, index) => {
+                const coolColors = [
+                  'hsl(145, 60%, 45%)',
+                  'hsl(200, 70%, 50%)',
+                  'hsl(160, 65%, 45%)',
+                  'hsl(220, 70%, 55%)',
+                  'hsl(280, 60%, 50%)',
+                  'hsl(180, 60%, 45%)',
+                  'hsl(260, 65%, 55%)',
+                  'hsl(170, 60%, 50%)',
+                ]
+                const color = coolColors[index % coolColors.length]
+                return (
+                  <div key={income.category_name} className="flex items-center justify-between p-3 rounded-lg border">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="flex h-10 w-10 items-center justify-center rounded-lg"
+                        style={{ backgroundColor: `${color}20` }}
+                      >
+                        <CategoryIcon iconName={income.category_icon} size={20} />
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm">{income.category_name}</p>
+                        <p className="text-xs text-muted-foreground">{income.percentage.toFixed(1)}% del total</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium text-sm">{income.category_name}</p>
-                      <p className="text-xs text-muted-foreground">{income.percentage.toFixed(1)}% del total</p>
-                    </div>
+                    <p className="font-semibold">{formatCurrency(income.total)}</p>
                   </div>
-                  <p className="font-semibold">{formatCurrency(income.total)}</p>
-                </div>
-              ))}
+                )
+              })}
+            </div>
 
-              <div className="flex items-center justify-between p-3 rounded-lg bg-primary/5 font-semibold">
-                <span>Total</span>
-                <span>{formatCurrency(totalIncomes)}</span>
-              </div>
+            <div className="flex items-center justify-between p-3 rounded-lg bg-primary/5 font-semibold mt-3">
+              <span>Total</span>
+              <span>{formatCurrency(totalIncomes)}</span>
             </div>
           </>
         )}

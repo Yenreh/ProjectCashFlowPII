@@ -9,6 +9,11 @@ import {
   enrichWithDatabaseIds,
   validateBackendFormat,
 } from "@/lib/nlp-service"
+import {
+  parseVoiceCommandWithAI,
+  detectCorrectionWithAI,
+  applyCorrectionWithAI,
+} from "@/lib/nlp-gemini-service"
 import { dbQueries } from "@/lib/db"
 import type { VoiceProcessingResult } from "@/lib/voice-types"
 
@@ -34,8 +39,15 @@ export async function POST(request: NextRequest) {
       console.log('[Voice] Procesando respuesta a pregunta pendiente:', transcription)
       console.log('[Voice] Comando pendiente:', pendingCommand)
       
-      // Parsear la nueva entrada para extraer la cuenta o categoría (PASAR BD)
-      const newParsed = parseVoiceCommand(transcription, categories, accounts)
+      // Usar AI para parsear la respuesta con mejor comprensión
+      let newParsed
+      try {
+        newParsed = await parseVoiceCommandWithAI(transcription, categories, accounts)
+        console.log('[Voice] 🤖 AI parseó respuesta pendiente')
+      } catch (error) {
+        console.log('[Voice] ⚠️ AI falló, usando regex fallback')
+        newParsed = parseVoiceCommand(transcription, categories, accounts)
+      }
       
       // Combinar: tomar cuenta/categoría de la nueva respuesta, resto del comando pendiente
       const combined = {
@@ -82,10 +94,26 @@ export async function POST(request: NextRequest) {
 
     // Si es una corrección, aplicarla al comando original
     if (isCorrection && originalCommand && transcription) {
-      const correction = detectCorrection(transcription, categories, accounts)
+      let correction
+      let corrected
       
-      if (correction.isCorrection) {
-        const corrected = applyCorrection(originalCommand, correction)
+      // Intentar detectar corrección con AI
+      try {
+        correction = await detectCorrectionWithAI(transcription, originalCommand, categories, accounts)
+        console.log('[Voice] 🤖 AI detectó corrección:', correction)
+        
+        if (correction.isCorrection) {
+          corrected = applyCorrectionWithAI(originalCommand, correction)
+        }
+      } catch (error) {
+        console.log('[Voice] ⚠️ AI falló detectando corrección, usando regex')
+        correction = detectCorrection(transcription, categories, accounts)
+        if (correction.isCorrection) {
+          corrected = applyCorrection(originalCommand, correction)
+        }
+      }
+      
+      if (correction.isCorrection && corrected) {
         const enriched = enrichWithDatabaseIds(corrected, categories, accounts)
         const backendValidation = validateBackendFormat(enriched)
         
@@ -119,8 +147,32 @@ export async function POST(request: NextRequest) {
       return await processConfirmedTransaction(parsedData)
     }
 
-    // Analizar el comando de voz (PASAR CATEGORÍAS Y CUENTAS DE LA BD)
-    let parsed = parseVoiceCommand(transcription, categories, accounts)
+    // Analizar el comando de voz CON AI (fallback a regex si falla)
+    let parsed
+    try {
+      console.log('[Voice] 🎤 Transcripción recibida:', transcription)
+      console.log('[Voice] 🤖 Intentando parsear con Gemini AI...')
+      parsed = await parseVoiceCommandWithAI(transcription, categories, accounts)
+      console.log('[Voice] ✅ AI parseó exitosamente:', {
+        intention: parsed.intention,
+        amount: parsed.amount,
+        category: parsed.categoryName,
+        categoryId: parsed.categoryId,
+        account: parsed.accountName,
+        accountId: parsed.accountId,
+        confidence: parsed.confidence
+      })
+    } catch (error) {
+      console.log('[Voice] ⚠️ AI falló, usando regex fallback:', error)
+      parsed = parseVoiceCommand(transcription, categories, accounts)
+      console.log('[Voice] 📝 Regex parseó:', {
+        intention: parsed.intention,
+        amount: parsed.amount,
+        category: parsed.categoryName,
+        account: parsed.accountName,
+        confidence: parsed.confidence
+      })
+    }
     
     // Si es una consulta, procesarla directamente
     if (parsed.intention === "consulta") {
@@ -150,7 +202,10 @@ export async function POST(request: NextRequest) {
     }
     
     // Enriquecer con IDs de la base de datos (para transacciones)
-    parsed = enrichWithDatabaseIds(parsed, categories, accounts)
+    // Solo si el AI no los asignó ya
+    if (!parsed.categoryId || !parsed.accountId) {
+      parsed = enrichWithDatabaseIds(parsed, categories, accounts)
+    }
     
     const validation = validateParsedCommand(parsed)
     const backendValidation = validateBackendFormat(parsed)
@@ -490,9 +545,13 @@ async function processConfirmedTransaction(parsedData: any) {
       amount: parsedData.amount,
       description: parsedData.description || "Transacción por voz",
       date: new Date().toISOString().split("T")[0],
+      source: 'voice',
+      image_hash: null,
+      ocr_confidence: null,
+      edited: false,
     })
 
-    console.log(`[Voice] Transacción creada: ID=${transaction.id}, Tipo=${parsedData.transactionType}, Monto=${parsedData.amount}, Cuenta=${parsedData.accountId}`)
+    console.log(`[Voice] Transacción creada: ID=${transaction.id}, Tipo=${parsedData.transactionType}, Monto=${parsedData.amount}, Cuenta=${parsedData.accountId}, Source=voice`)
 
     // Actualizar el balance de la cuenta
     const oldBalance = Number(account.balance) || 0  // Convertir a número por si viene como string

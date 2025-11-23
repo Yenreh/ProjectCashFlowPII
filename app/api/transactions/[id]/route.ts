@@ -15,8 +15,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const transactionId = Number.parseInt(id)
     const body = await request.json()
 
-    console.log("[Transaction PATCH] 📝 Original body:", body)
-
     // Convertir y validar account_id
     if (body.account_id !== undefined) {
       body.account_id = Number(body.account_id)
@@ -33,8 +31,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       }
     }
 
-    console.log("[Transaction PATCH] ✅ Processed body:", body)
-
     let updatedTransaction: Transaction
 
     // Use database if available, otherwise fallback to mock data
@@ -48,13 +44,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           return NextResponse.json({ error: "Transacción no encontrada" }, { status: 404 })
         }
 
-        console.log("[Transaction PATCH] 📄 Original transaction:", {
-          id: originalTransaction.id,
-          type: originalTransaction.type,
-          amount: originalTransaction.amount,
-          account_id: originalTransaction.account_id
-        })
-
         // Obtener todas las cuentas
         const accounts = await dbQueries.getAccounts(true)
         const originalAccount = accounts.find(a => a.id === originalTransaction.account_id)
@@ -63,14 +52,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           return NextResponse.json({ error: "Cuenta original no encontrada" }, { status: 404 })
         }
 
-        console.log("[Transaction PATCH] 💰 Original account balance:", formatBalanceForLog(originalAccount.balance))
-
         // Determinar los nuevos valores (usar valores actuales si no se proporcionan nuevos)
         const newAccountId = body.account_id !== undefined ? body.account_id : originalTransaction.account_id
         const newType = body.type !== undefined ? body.type : originalTransaction.type
         const newAmount = body.amount !== undefined ? body.amount : validateNumber(originalTransaction.amount, "Original amount")
-
-        console.log("[Transaction PATCH] 🔄 New values:", { newAccountId, newType, newAmount })
 
         // PASO 1: Revertir el efecto de la transacción original usando utilidades
         const revertedBalance = revertTransactionEffect(
@@ -79,19 +64,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           originalTransaction.type
         )
 
-        console.log("[Transaction PATCH] ⏮️  Reverted balance:", formatBalanceForLog(revertedBalance))
-
         // PASO 2: Actualizar la transacción en la base de datos
         updatedTransaction = await dbQueries.updateTransaction(transactionId, body)
 
         // PASO 3: Aplicar el efecto de la nueva transacción
         if (newAccountId !== originalTransaction.account_id) {
           // Caso A: La cuenta cambió - actualizar ambas cuentas
-          console.log("[Transaction PATCH] 🔀 Account changed from", originalTransaction.account_id, "to", newAccountId)
           
           // Guardar el balance revertido en la cuenta original
           await dbQueries.updateAccount(originalTransaction.account_id, { balance: revertedBalance })
-          console.log("[Transaction PATCH] ✅ Updated original account to:", formatBalanceForLog(revertedBalance))
           
           // Obtener la nueva cuenta
           const newAccount = accounts.find(a => a.id === newAccountId)
@@ -106,12 +87,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
             newType
           )
           
-          console.log("[Transaction PATCH] 💰 New account balance:", formatBalanceForLog(newAccountBalance))
           await dbQueries.updateAccount(newAccountId, { balance: newAccountBalance })
-          console.log("[Transaction PATCH] ✅ Updated new account to:", formatBalanceForLog(newAccountBalance))
         } else {
           // Caso B: Misma cuenta - aplicar el efecto de la nueva transacción sobre el balance revertido
-          console.log("[Transaction PATCH] 🔁 Same account, applying changes")
           
           const finalBalance = calculateNewBalance(
             revertedBalance,
@@ -119,9 +97,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
             newType
           )
           
-          console.log("[Transaction PATCH] ⚖️  Final balance (same account):", formatBalanceForLog(finalBalance))
           await dbQueries.updateAccount(originalTransaction.account_id, { balance: finalBalance })
-          console.log("[Transaction PATCH] ✅ Updated account to:", formatBalanceForLog(finalBalance))
         }
 
       } catch (error) {
@@ -165,8 +141,6 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   try {
     const { id } = await params
     const transactionId = Number.parseInt(id)
-
-    console.log("[Transaction DELETE] 🗑️  Deleting transaction ID:", transactionId)
 
     // Use database if available, otherwise fallback to mock data
     if (sql) {
