@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { getReceiptImageInfo } from "@/lib/storage-service"
 import { promises as fs } from "fs"
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { hash: string } }

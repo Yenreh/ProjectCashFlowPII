@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { dbQueries } from "@/lib/db"
 import { requireAuth } from "@/lib/auth-helpers"
 
+export const dynamic = 'force-dynamic'
+
 /**
  * GET /api/voice/today-total
  * Calcula el total de transacciones del día actual

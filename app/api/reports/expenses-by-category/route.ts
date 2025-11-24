@@ -3,6 +3,8 @@ import { dbQueries } from "@/lib/db"
 import type { CategoryExpense } from "@/lib/types"
 import { requireAuth } from "@/lib/auth-helpers"
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: Request) {
   try {
     const user = await requireAuth()

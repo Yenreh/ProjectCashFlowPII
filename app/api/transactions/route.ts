@@ -4,6 +4,8 @@ import type { Transaction } from "@/lib/types"
 import { validateNumber, calculateNewBalance } from "@/lib/balance-utils"
 import { requireAuth } from "@/lib/auth-helpers"
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: Request) {
   try {
     const user = await requireAuth()

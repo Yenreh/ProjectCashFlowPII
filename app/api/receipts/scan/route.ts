@@ -5,6 +5,8 @@ import { dbQueries } from "@/lib/db"
 import type { ReceiptScanResponse } from "@/lib/receipt-types"
 import { requireAuth } from "@/lib/auth-helpers"
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth()

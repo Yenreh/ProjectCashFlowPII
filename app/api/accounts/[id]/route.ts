@@ -4,6 +4,8 @@ import { mockAccounts } from "@/lib/mock-data"
 import { requireAuth } from "@/lib/auth-helpers"
 import type { Account } from "@/lib/types"
 
+export const dynamic = 'force-dynamic'
+
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAuth()
