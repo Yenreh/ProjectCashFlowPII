@@ -79,4 +79,9 @@ export const authOptions: AuthOptions = {
     maxAge: 30 * 24 * 60 * 60, // 30 días
   },
   secret: process.env.NEXTAUTH_SECRET,
+  // Vercel automáticamente detecta NEXTAUTH_URL en producción
+  // Solo necesario en desarrollo local
+  ...(process.env.NODE_ENV === "development" && {
+    url: process.env.NEXTAUTH_URL,
+  }),
 }
