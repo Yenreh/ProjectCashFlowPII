@@ -4,6 +4,7 @@ import { generateChatResponse, generateFallbackResponse } from "@/lib/chat-servi
 import { analyzeSavingsOpportunities } from "@/lib/savings-analyzer"
 import { analyzeFinancesWithAI } from "@/lib/financial-ai-analyzer"
 import type { ChatRequest, ChatResponse, FinancialContext } from "@/lib/chat-types"
+import { requireAuth } from "@/lib/auth-helpers"
 
 export const dynamic = "force-dynamic"
 
@@ -16,6 +17,7 @@ export const dynamic = "force-dynamic"
  */
 export async function POST(request: NextRequest) {
   try {
+    const user = await requireAuth()
     const body: ChatRequest = await request.json()
     const { message, history = [] } = body
 
@@ -27,7 +29,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 1. Obtener contexto financiero desde la DB
-    const context = await buildFinancialContext()
+    const context = await buildFinancialContext(user.id)
 
     // 2. Analizar oportunidades de ahorro con AI (fallback a estático si falla)
     const savingsAnalysis = await analyzeFinancesWithAI(context)
@@ -70,7 +72,7 @@ export async function POST(request: NextRequest) {
  * Construye el contexto financiero desde la base de datos
  * Incluye transacciones recientes, gastos por categoría, y resumen general
  */
-async function buildFinancialContext(): Promise<FinancialContext> {
+async function buildFinancialContext(userId: number): Promise<FinancialContext> {
   // Definir rango de fechas (últimos 30 días por defecto)
   const endDate = new Date()
   const startDate = new Date()
@@ -80,7 +82,7 @@ async function buildFinancialContext(): Promise<FinancialContext> {
   const endDateStr = endDate.toISOString().split("T")[0]
 
   // Obtener transacciones del período
-  const allTransactions = await dbQueries.getTransactions({
+  const allTransactions = await dbQueries.getTransactions(userId, {
     startDate: startDateStr,
     endDate: endDateStr,
   })

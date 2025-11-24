@@ -1,35 +1,20 @@
 import { NextResponse } from "next/server"
-import { dbQueries, sql } from "@/lib/db"
-import { mockCategories } from "@/lib/mock-data"
+import { dbQueries } from "@/lib/db"
 import type { Category } from "@/lib/types"
+import { getCurrentUser } from "@/lib/auth-helpers"
 
 export async function GET(request: Request) {
   try {
+    // Get current user (optional - returns global categories if not logged in)
+    const user = await getCurrentUser()
+    
     const { searchParams } = new URL(request.url)
     const type = searchParams.get("type")
 
-    let categories: Category[] = []
-
-    // Use database if available, otherwise fallback to mock data
-    if (sql) {
-      try {
-        if (type && (type === "ingreso" || type === "gasto")) {
-          categories = await dbQueries.getCategories(type)
-        } else {
-          categories = await dbQueries.getCategories()
-        }
-      } catch (error) {
-        console.error("[v0] Database error, falling back to mock data:", error)
-        categories = mockCategories
-      }
-    } else {
-      categories = mockCategories
-    }
-
-    // Apply filtering for mock data or if database didn't handle filtering
-    if (!sql && type && (type === "ingreso" || type === "gasto")) {
-      categories = categories.filter((cat) => cat.type === type)
-    }
+    const typeFilter = (type === "ingreso" || type === "gasto") ? type as "ingreso" | "gasto" : undefined
+    
+    // Pass userId only if user is logged in, otherwise undefined to get only global categories
+    const categories = await dbQueries.getCategories(user?.id, typeFilter)
 
     return NextResponse.json(categories)
   } catch (error) {

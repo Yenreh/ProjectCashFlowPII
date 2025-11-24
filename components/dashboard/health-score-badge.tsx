@@ -5,18 +5,27 @@ import { AlertCircle, Lightbulb, CheckCircle, Info, RefreshCw, TrendingUp, Trend
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/lib/format"
-import { useFinancialAnalysis } from "@/lib/hooks/use-financial-analysis"
+import { useFinancialAnalysisStore } from "@/lib/stores/financial-analysis-store"
 import type { SavingsInsight } from "@/lib/savings-analyzer"
 import { cn } from "@/lib/utils"
 
 export function HealthScoreBadge() {
-  const { analysis, loading, refresh } = useFinancialAnalysis()
+  const { analysis, loading, fetchAnalysis, invalidate } = useFinancialAnalysisStore()
   const [refreshing, setRefreshing] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
 
+  // Cuando se abre el modal, invalidar caché y hacer nueva petición
+  const handleOpenModal = async () => {
+    setIsModalOpen(true)
+    setRefreshing(true)
+    invalidate() // Forzar nueva petición
+    await fetchAnalysis(true) // Force refresh
+    setRefreshing(false)
+  }
+
   const handleRefresh = async () => {
     setRefreshing(true)
-    await refresh()
+    await fetchAnalysis(true) // Force refresh
     setRefreshing(false)
   }
 
@@ -95,7 +104,7 @@ export function HealthScoreBadge() {
     <>
       <div 
         className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-        onClick={() => setIsModalOpen(true)}
+        onClick={handleOpenModal}
       >
         <div className={cn(
           "h-8 w-8 sm:h-10 sm:w-10 rounded-full flex items-center justify-center flex-shrink-0 relative",
@@ -169,25 +178,19 @@ export function HealthScoreBadge() {
                   </div>
                 </div>
 
-                {/* Summary Card */}
-                <div className="rounded-lg bg-muted/30 p-4 space-y-3">
-                  <div className="flex items-start gap-2">
-                    <div className="flex-shrink-0 mt-0.5">
-                      <div className="h-6 w-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                        <span className="text-[10px] font-bold text-white">AI</span>
+                {/* Ahorro Potencial Card */}
+                {analysis!.totalPotentialSavings > 0 && (
+                  <div className="rounded-lg bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/20 p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">Ahorro potencial identificado:</span>
                       </div>
-                    </div>
-                    <p className="text-sm leading-relaxed flex-1">{analysis!.summary}</p>
-                  </div>
-                  {analysis!.totalPotentialSavings > 0 && (
-                    <div className="flex items-baseline gap-2 pt-3 border-t">
-                      <span className="text-sm text-muted-foreground">Ahorro potencial:</span>
-                      <span className="text-base font-semibold text-green-600 dark:text-green-500">
+                      <span className="text-xl font-bold text-green-600 dark:text-green-500">
                         {formatCurrency(analysis!.totalPotentialSavings)}
                       </span>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {/* Insights Section */}
                 <div className="space-y-3">
@@ -222,7 +225,7 @@ export function HealthScoreBadge() {
                         <p className="text-sm opacity-90 leading-relaxed">{insight.message}</p>
                         {insight.suggestion && (
                           <div className="mt-2.5 pt-2.5 border-t border-current/20">
-                            <p className="text-xs font-medium text-muted-foreground mb-1">Recomendación</p>
+                            <p className="text-xs font-medium opacity-70 mb-1">💡 Recomendación:</p>
                             <p className="text-sm opacity-90">{insight.suggestion}</p>
                           </div>
                         )}
@@ -274,8 +277,8 @@ export function HealthScoreBadge() {
                   </div>
                 )}
 
-                {/* Recommendations Section */}
-                {analysis!.recommendations && analysis!.recommendations.length > 0 && (
+                {/* Recommendations Section - Oculto porque las sugerencias principales ya tienen toda la info */}
+                {false && (analysis?.recommendations?.length ?? 0) > 0 && (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <h4 className="text-sm font-medium text-muted-foreground">
@@ -284,7 +287,7 @@ export function HealthScoreBadge() {
                     </div>
                     
                     <div className="space-y-2">
-                      {analysis!.recommendations.map((rec, index) => (
+                      {analysis?.recommendations?.map((rec, index) => (
                     <div 
                       key={index}
                       className="flex items-start gap-3 p-3 rounded-lg bg-blue-500/5 border border-blue-500/20 hover:bg-blue-500/10 transition-colors"

@@ -16,9 +16,17 @@ export function ExpenseChart() {
       try {
         const response = await fetch("/api/reports/expenses-by-category")
         const data = await response.json()
-        setExpenses(data)
+        
+        // Validar que data sea un array
+        if (Array.isArray(data)) {
+          setExpenses(data)
+        } else {
+          console.error("[ExpenseChart] Invalid data format:", data)
+          setExpenses([])
+        }
       } catch (error) {
-        console.error("[v0] Error fetching expenses:", error)
+        console.error("[ExpenseChart] Error fetching expenses:", error)
+        setExpenses([])
       } finally {
         setLoading(false)
       }

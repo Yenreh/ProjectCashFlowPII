@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server"
-import { dbQueries, sql } from "@/lib/db"
-import { mockTransactions, createMockTransactionsWithDetails } from "@/lib/mock-data"
-import type { Transaction, TransactionWithDetails } from "@/lib/types"
-import { validateNumber, calculateNewBalance, formatBalanceForLog } from "@/lib/balance-utils"
+import { dbQueries } from "@/lib/db"
+import type { Transaction } from "@/lib/types"
+import { validateNumber, calculateNewBalance } from "@/lib/balance-utils"
+import { requireAuth } from "@/lib/auth-helpers"
 
 export async function GET(request: Request) {
   try {
+    const user = await requireAuth()
+    
     const { searchParams } = new URL(request.url)
     const type = searchParams.get("type")
     const accountId = searchParams.get("accountId")
@@ -13,46 +15,17 @@ export async function GET(request: Request) {
     const startDate = searchParams.get("startDate")
     const endDate = searchParams.get("endDate")
 
-    let transactionsWithDetails: TransactionWithDetails[] = []
-
-    // Use database if available, otherwise fallback to mock data
-    if (sql) {
-      try {
-        const filters = {
-          type: (type === "ingreso" || type === "gasto") ? type as "ingreso" | "gasto" : undefined,
-          accountId: accountId ? Number.parseInt(accountId) : undefined,
-          categoryId: categoryId ? Number.parseInt(categoryId) : undefined,
-          startDate: startDate || undefined,
-          endDate: endDate || undefined,
-        }
-        transactionsWithDetails = await dbQueries.getTransactions(filters)
-      } catch (error) {
-        console.error("[v0] Database error, falling back to mock data:", error)
-        transactionsWithDetails = createMockTransactionsWithDetails()
-      }
-    } else {
-      // Use mock data and apply manual filtering
-      transactionsWithDetails = createMockTransactionsWithDetails()
-      
-      // Apply filters
-      if (type && (type === "ingreso" || type === "gasto")) {
-        transactionsWithDetails = transactionsWithDetails.filter((t) => t.type === type)
-      }
-      if (accountId) {
-        transactionsWithDetails = transactionsWithDetails.filter((t) => t.account_id === Number.parseInt(accountId))
-      }
-      if (categoryId) {
-        transactionsWithDetails = transactionsWithDetails.filter((t) => t.category_id === Number.parseInt(categoryId))
-      }
-      if (startDate) {
-        transactionsWithDetails = transactionsWithDetails.filter((t) => t.date >= startDate)
-      }
-      if (endDate) {
-        transactionsWithDetails = transactionsWithDetails.filter((t) => t.date <= endDate)
-      }
+    const filters = {
+      type: (type === "ingreso" || type === "gasto") ? type as "ingreso" | "gasto" : undefined,
+      accountId: accountId ? Number.parseInt(accountId) : undefined,
+      categoryId: categoryId ? Number.parseInt(categoryId) : undefined,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
     }
+    
+    const transactionsWithDetails = await dbQueries.getTransactions(user.id, filters)
 
-    // Sort by date descending (database should already do this, but ensure consistency)
+    // Sort by date descending
     transactionsWithDetails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
     return NextResponse.json(transactionsWithDetails)
@@ -64,6 +37,8 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const user = await requireAuth()
+    
     const body = await request.json()
     const { account_id, category_id, type, amount, description, date, source, image_hash, ocr_confidence, edited } = body
 
@@ -108,50 +83,26 @@ export async function POST(request: Request) {
 
     let newTransaction: Transaction
 
-    // Use database if available, otherwise fallback to mock data
-    if (sql) {
-      try {
-        // Obtener la cuenta para calcular el nuevo balance
-        const accounts = await dbQueries.getAccounts(true)
-        const account = accounts.find(a => a.id === newTransactionData.account_id)
-        
-        if (!account) {
-          return NextResponse.json({ error: "Cuenta no encontrada" }, { status: 404 })
-        }
-        
-        // Crear la transacción
-        newTransaction = await dbQueries.createTransaction(newTransactionData)
-        
-        // Calcular el nuevo balance usando utilidades
-        const newBalance = calculateNewBalance(
-          account.balance,
-          newTransactionData.amount,
-          newTransactionData.type
-        )
-        
-        // Actualizar el balance de la cuenta
-        await dbQueries.updateAccount(newTransactionData.account_id, { balance: newBalance })
-      } catch (error) {
-        console.error("[v0] Database error, falling back to mock data:", error)
-        // Fallback to mock data creation
-        newTransaction = {
-          ...newTransactionData,
-          id: Math.max(...mockTransactions.map((t) => t.id), 0) + 1,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
-        mockTransactions.push(newTransaction)
-      }
-    } else {
-      // Mock data creation
-      newTransaction = {
-        ...newTransactionData,
-        id: Math.max(...mockTransactions.map((t) => t.id), 0) + 1,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-      mockTransactions.push(newTransaction)
+    // Obtener la cuenta para calcular el nuevo balance
+    const accounts = await dbQueries.getAccounts(user.id, true)
+    const account = accounts.find(a => a.id === newTransactionData.account_id)
+    
+    if (!account) {
+      return NextResponse.json({ error: "Cuenta no encontrada" }, { status: 404 })
     }
+    
+    // Crear la transacción
+    newTransaction = await dbQueries.createTransaction(user.id, newTransactionData)
+    
+    // Calcular el nuevo balance usando utilidades
+    const newBalance = calculateNewBalance(
+      account.balance,
+      newTransactionData.amount,
+      newTransactionData.type
+    )
+    
+    // Actualizar el balance de la cuenta
+    await dbQueries.updateAccount(user.id, newTransactionData.account_id, { balance: newBalance })
 
     return NextResponse.json(newTransaction, { status: 201 })
   } catch (error) {

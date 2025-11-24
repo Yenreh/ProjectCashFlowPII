@@ -164,13 +164,6 @@ export async function generateChatResponse(
       }
     })
 
-    // Log de la respuesta para debugging
-    console.log('🤖 [Chat Service] Gemini Response:', {
-      finishReason: response.candidates?.[0]?.finishReason,
-      hasText: !!response.text,
-      response: response
-    });
-
     // Extraer el texto de la respuesta
     const text = response.text || 
                  response.candidates?.[0]?.content?.parts?.[0]?.text ||

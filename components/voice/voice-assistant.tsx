@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { useVoiceRecorder } from "@/lib/hooks/use-voice-recorder"
 import type { VoiceProcessingResult, ParsedVoiceCommand } from "@/lib/voice-types"
-import type { Account, Category } from "@/lib/types"
+import { useCategoriesStore, useAccountsStore } from "@/lib/stores"
 
 // HU-012: Comandos sugeridos
 const SUGGESTED_COMMANDS = {
@@ -65,9 +65,9 @@ export function VoiceAssistant({ onTransactionCreated }: VoiceAssistantProps) {
   const [editedDescription, setEditedDescription] = useState<string>("")
   const [hasManualEdits, setHasManualEdits] = useState(false)
 
-  // Datos de categorías y cuentas
-  const [categories, setCategories] = useState<Category[]>([])
-  const [accounts, setAccounts] = useState<Account[]>([])
+  // Usar stores para categorías y cuentas
+  const { categories, fetchCategories } = useCategoriesStore()
+  const { accounts, fetchAccounts } = useAccountsStore()
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const pendingCommandRef = useRef<ParsedVoiceCommand | null>(null)
@@ -77,24 +77,11 @@ export function VoiceAssistant({ onTransactionCreated }: VoiceAssistantProps) {
     pendingCommandRef.current = pendingCommand
   }, [pendingCommand])
 
-  // Cargar categorías y cuentas
+  // Cargar categorías y cuentas desde stores
   useEffect(() => {
-    async function fetchData() {
-      try {
-        const [categoriesRes, accountsRes] = await Promise.all([
-          fetch("/api/categories"),
-          fetch("/api/accounts"),
-        ])
-        const categoriesData = await categoriesRes.json()
-        const accountsData = await accountsRes.json()
-        setCategories(categoriesData)
-        setAccounts(accountsData)
-      } catch (error) {
-        console.error("Error cargando categorías/cuentas:", error)
-      }
-    }
-    fetchData()
-  }, [])
+    fetchCategories()
+    fetchAccounts()
+  }, [fetchCategories, fetchAccounts])
 
   const {
     recordingState,
@@ -383,7 +370,7 @@ export function VoiceAssistant({ onTransactionCreated }: VoiceAssistantProps) {
 
       // Actualizar IDs si el usuario cambió categoría o cuenta manualmente
       if (editedCategory && editedCategory !== processingResult.parsedCommand.categoryName) {
-        const category = categories.find(c => c.name === editedCategory)
+        const category = categories.find((c: any) => c.name === editedCategory)
         if (category) {
           updatedCommand.categoryId = category.id
           updatedCommand.categoryName = category.name
@@ -391,7 +378,7 @@ export function VoiceAssistant({ onTransactionCreated }: VoiceAssistantProps) {
       }
 
       if (editedAccount && editedAccount !== processingResult.parsedCommand.accountName) {
-        const account = accounts.find(a => a.name === editedAccount)
+        const account = accounts.find((a: any) => a.name === editedAccount)
         if (account) {
           updatedCommand.accountId = account.id
           updatedCommand.accountName = account.name
@@ -681,8 +668,8 @@ export function VoiceAssistant({ onTransactionCreated }: VoiceAssistantProps) {
                   </SelectTrigger>
                   <SelectContent>
                     {categories
-                      .filter(cat => !editedType || cat.type === editedType)
-                      .map((category) => (
+                      .filter((cat: any) => !editedType || cat.type === editedType)
+                      .map((category: any) => (
                         <SelectItem key={category.id} value={category.name}>
                           {category.name}
                         </SelectItem>
@@ -705,7 +692,7 @@ export function VoiceAssistant({ onTransactionCreated }: VoiceAssistantProps) {
                     <SelectValue placeholder="Seleccionar cuenta" />
                   </SelectTrigger>
                   <SelectContent>
-                    {accounts.map((account) => (
+                    {accounts.map((account: any) => (
                       <SelectItem key={account.id} value={account.name}>
                         {account.name}
                       </SelectItem>

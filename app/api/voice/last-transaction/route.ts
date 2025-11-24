@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { dbQueries } from "@/lib/db"
+import { requireAuth } from "@/lib/auth-helpers"
 
 /**
  * GET /api/voice/last-transaction
@@ -7,11 +8,12 @@ import { dbQueries } from "@/lib/db"
  */
 export async function GET(request: NextRequest) {
   try {
+    const user = await requireAuth()
     const searchParams = request.nextUrl.searchParams
     const type = searchParams.get("type") as "ingreso" | "gasto" | null
 
     // Obtener todas las transacciones ordenadas por fecha
-    const allTransactions = await dbQueries.getTransactions({
+    const allTransactions = await dbQueries.getTransactions(user.id, {
       type: type || undefined,
     })
 

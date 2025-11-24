@@ -17,8 +17,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CategorySelector } from "@/components/categories/category-selector"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import type { Transaction, TransactionType, Account } from "@/lib/types"
+import type { Transaction, TransactionType } from "@/lib/types"
 import { formatDateInput } from "@/lib/format"
+import { useAccountsStore, useTransactionsStore, useStoreSync } from "@/lib/stores"
 
 interface TransactionFormDialogProps {
   open: boolean
@@ -36,7 +37,10 @@ export function TransactionFormDialog({
   onSuccess,
 }: TransactionFormDialogProps) {
   const [loading, setLoading] = useState(false)
-  const [accounts, setAccounts] = useState<Account[]>([])
+  const { accounts, fetchAccounts } = useAccountsStore()
+  const { createTransaction, updateTransaction } = useTransactionsStore()
+  const { invalidateAll } = useStoreSync()
+  
   const [formData, setFormData] = useState({
     type: defaultType,
     account_id: "",
@@ -47,20 +51,14 @@ export function TransactionFormDialog({
   })
 
   useEffect(() => {
-    async function fetchAccounts() {
-      try {
-        const response = await fetch("/api/accounts")
-        const data = await response.json()
-        setAccounts(data)
-        if (data.length > 0 && !formData.account_id) {
-          setFormData((prev) => ({ ...prev, account_id: data[0].id.toString() }))
-        }
-      } catch (error) {
-        console.error("[v0] Error fetching accounts:", error)
-      }
-    }
     fetchAccounts()
-  }, [])
+  }, [fetchAccounts])
+
+  useEffect(() => {
+    if (accounts.length > 0 && !formData.account_id) {
+      setFormData((prev) => ({ ...prev, account_id: accounts[0].id.toString() }))
+    }
+  }, [accounts, formData.account_id])
 
   useEffect(() => {
     if (transaction) {
@@ -95,21 +93,27 @@ export function TransactionFormDialog({
     setLoading(true)
 
     try {
-      const url = transaction ? `/api/transactions/${transaction.id}` : "/api/transactions"
-      const method = transaction ? "PATCH" : "POST"
+      const transactionData = {
+        ...formData,
+        account_id: parseInt(formData.account_id),
+        amount: parseFloat(formData.amount)
+      }
 
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      })
+      if (transaction) {
+        // Actualizar transacción existente
+        await updateTransaction(transaction.id, transactionData)
+      } else {
+        // Crear nueva transacción
+        await createTransaction(transactionData as any)
+      }
 
-      if (!response.ok) throw new Error("Error al guardar transacción")
+      // Invalidar todos los stores
+      invalidateAll()
 
       onSuccess?.()
       onOpenChange(false)
     } catch (error) {
-      console.error("[v0] Error saving transaction:", error)
+      console.error("[Transaction Form] Error:", error)
       alert("Error al guardar la transacción")
     } finally {
       setLoading(false)

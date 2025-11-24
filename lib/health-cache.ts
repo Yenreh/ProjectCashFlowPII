@@ -18,6 +18,12 @@ class HealthCache {
       return null
     }
 
+    // Si currentTransactionId es -1, devolver caché sin validar (para emergencias)
+    if (currentTransactionId === -1) {
+      console.log('[Health Cache] 🚨 Retornando caché sin validar (modo emergencia)')
+      return this.cache.analysis
+    }
+
     // Si hay una nueva transacción, invalidar caché
     if (this.cache.lastTransactionId !== currentTransactionId) {
       console.log('[Health Cache] Nueva transacción detectada, invalidando caché')

@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Home, Receipt, Wallet, BarChart3 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { UserMenu } from "@/components/auth/user-menu"
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: Home },
@@ -53,6 +54,7 @@ export function MainNav() {
               })}
             </div>
           </div>
+          <UserMenu />
         </div>
       </div>
     </nav>

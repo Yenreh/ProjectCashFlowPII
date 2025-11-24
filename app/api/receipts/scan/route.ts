@@ -3,9 +3,12 @@ import { scanReceiptWithAI, validateImageQuality } from "@/lib/ocr-service"
 import { saveReceiptImage } from "@/lib/storage-service"
 import { dbQueries } from "@/lib/db"
 import type { ReceiptScanResponse } from "@/lib/receipt-types"
+import { requireAuth } from "@/lib/auth-helpers"
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await requireAuth()
+    
     // Parsear el body
     const body = await request.json()
     const { image } = body
@@ -34,7 +37,7 @@ export async function POST(request: NextRequest) {
     const imageHash = await saveReceiptImage(image)
 
     // Obtener categorías para mapeo inteligente
-    const categories = await dbQueries.getCategories()
+    const categories = await dbQueries.getCategories(user.id)
 
     // Procesar la imagen con IA
     const scanResult = await scanReceiptWithAI(image, categories)

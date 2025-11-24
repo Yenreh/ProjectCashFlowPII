@@ -30,7 +30,7 @@ export interface SaveRecommendation {
 
 export interface SavingsAnalysis {
   insights: SavingsInsight[]
-  summary: string
+  summary?: string // Opcional ahora
   totalPotentialSavings: number
   healthScore: number // 0-100
   trends?: CategoryTrend[]
@@ -206,14 +206,17 @@ export function analyzeSavingsOpportunities(context: FinancialContext): SavingsA
   // Calcular health score (0-100)
   const healthScore = calculateHealthScore(context, insights)
 
-  // Generar resumen
-  const summary = generateSummary(context, insights, totalPotentialSavings, healthScore)
+  // Generar mensaje motivacional
+  const motivationalMessage = generateMotivationalMessage(context, healthScore)
+
+  // Limitar insights a máximo 5
+  const limitedInsights = insights.slice(0, 5)
 
   return {
-    insights,
-    summary,
+    insights: limitedInsights,
     totalPotentialSavings,
     healthScore,
+    motivationalMessage,
   }
 }
 
@@ -248,30 +251,18 @@ function calculateHealthScore(context: FinancialContext, insights: SavingsInsigh
 }
 
 /**
- * Genera un resumen textual del análisis
+ * Genera un mensaje motivacional basado en el health score
  */
-function generateSummary(
-  context: FinancialContext,
-  insights: SavingsInsight[],
-  potentialSavings: number,
-  healthScore: number
-): string {
-  const criticalIssues = insights.filter((i) => i.priority === "high" && i.type === "warning").length
-  const opportunities = insights.filter((i) => i.type === "opportunity").length
-
-  let summary = ""
-
+function generateMotivationalMessage(context: FinancialContext, healthScore: number): string {
   if (healthScore >= 80) {
-    summary = `Tu salud financiera es excelente. Sigue así y considera invertir tu excedente.`
+    return "¡Excelente manejo de tus finanzas! Tu disciplina está dando frutos. Sigue así y considera invertir para hacer crecer tu patrimonio."
   } else if (healthScore >= 60) {
-    summary = `Vas por buen camino. Hay algunas áreas de mejora que podrían optimizar tus finanzas.`
+    return "Vas por buen camino. Con algunos ajustes en tus gastos, podrás mejorar significativamente tu situación financiera."
   } else if (healthScore >= 40) {
-    summary = `Tu situación financiera necesita atención. Revisa las sugerencias para mejorar.`
+    return "Tu situación requiere atención, pero no te desanimes. Pequeños cambios consistentes pueden generar grandes mejoras."
   } else {
-    summary = `Situación crítica. Es urgente tomar acción para mejorar tu balance financiero.`
+    return "Es momento de tomar acción. Enfócate en reducir gastos no esenciales y busca aumentar tus ingresos. ¡Tú puedes hacerlo!"
   }
-
-  return summary
 }
 
 /**

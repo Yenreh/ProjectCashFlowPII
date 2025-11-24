@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { dbQueries } from "@/lib/db"
 import { analyzeSavingsOpportunities } from "@/lib/savings-analyzer"
 import type { FinancialContext } from "@/lib/chat-types"
+import { requireAuth } from "@/lib/auth-helpers"
 
 export const dynamic = "force-dynamic"
 
@@ -13,6 +14,8 @@ export const dynamic = "force-dynamic"
  */
 export async function GET(request: NextRequest) {
   try {
+    const user = await requireAuth()
+    
     // Definir rango de fechas (últimos 30 días por defecto)
     const endDate = new Date()
     const startDate = new Date()
@@ -22,7 +25,7 @@ export async function GET(request: NextRequest) {
     const endDateStr = endDate.toISOString().split("T")[0]
 
     // Obtener transacciones del período
-    const allTransactions = await dbQueries.getTransactions({
+    const allTransactions = await dbQueries.getTransactions(user.id, {
       startDate: startDateStr,
       endDate: endDateStr,
     })

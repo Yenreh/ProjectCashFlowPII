@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server"
 import { dbQueries, sql } from "@/lib/db"
 import { mockAccounts } from "@/lib/mock-data"
+import { requireAuth } from "@/lib/auth-helpers"
 import type { Account } from "@/lib/types"
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const user = await requireAuth()
     const { id } = await params
     const accountId = Number.parseInt(id)
     const body = await request.json()
@@ -14,7 +16,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     // Use database if available, otherwise fallback to mock data
     if (sql) {
       try {
-        updatedAccount = await dbQueries.updateAccount(accountId, body)
+        updatedAccount = await dbQueries.updateAccount(user.id, accountId, body)
       } catch (error) {
         console.error("[v0] Database error, falling back to mock data:", error)
         // Fallback to mock data update
@@ -48,19 +50,23 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json(updatedAccount)
   } catch (error) {
     console.error("[v0] Error updating account:", error)
+    if ((error as any).message === "Unauthorized") {
+      return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+    }
     return NextResponse.json({ error: "Error al actualizar cuenta" }, { status: 500 })
   }
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const user = await requireAuth()
     const { id } = await params
     const accountId = Number.parseInt(id)
 
     // Use database if available, otherwise fallback to mock data
     if (sql) {
       try {
-        const success = await dbQueries.deleteAccount(accountId)
+        const success = await dbQueries.deleteAccount(user.id, accountId)
         if (!success) {
           return NextResponse.json({ error: "Cuenta no encontrada" }, { status: 404 })
         }
@@ -85,6 +91,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("[v0] Error deleting account:", error)
+    if ((error as any).message === "Unauthorized") {
+      return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+    }
     return NextResponse.json({ error: "Error al eliminar cuenta" }, { status: 500 })
   }
 }

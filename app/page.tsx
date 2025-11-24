@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect } from "react"
 import { TrendingUp, TrendingDown, Wallet, Receipt } from "lucide-react"
 import { AppLayout } from "@/components/layout/app-layout"
 import { MetricCard } from "@/components/dashboard/metric-card"
@@ -9,33 +9,19 @@ import { AccountsSummary } from "@/components/dashboard/accounts-summary"
 import { QuickTransactionButtons } from "@/components/transactions/quick-transaction-buttons"
 import { HealthScoreBadge } from "@/components/dashboard/health-score-badge"
 import { formatCurrency } from "@/lib/format"
-import type { DashboardMetrics } from "@/lib/types"
+import { useMetricsStore, useStoreSync } from "@/lib/stores"
 
 export default function DashboardPage() {
-  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [refreshTrigger, setRefreshTrigger] = useState(0)
-
-  const fetchMetrics = async () => {
-    try {
-      const response = await fetch("/api/dashboard/metrics")
-      const data = await response.json()
-      setMetrics(data)
-    } catch (error) {
-      console.error("[v0] Error fetching metrics:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleDataRefresh = () => {
-    fetchMetrics()
-    setRefreshTrigger((prev) => prev + 1)
-  }
+  const { metrics, loading, fetchMetrics } = useMetricsStore()
+  const { refreshAll } = useStoreSync()
 
   useEffect(() => {
     fetchMetrics()
-  }, [])
+  }, [fetchMetrics])
+
+  const handleDataRefresh = async () => {
+    await refreshAll()
+  }
 
   return (
     <AppLayout onTransactionCreated={handleDataRefresh}>
@@ -86,10 +72,10 @@ export default function DashboardPage() {
 
               <div className="grid gap-4 sm:gap-6 lg:grid-cols-3 overflow-hidden">
                 <div className="lg:col-span-2 min-w-0">
-                  <RecentTransactions refreshTrigger={refreshTrigger} onDataChange={handleDataRefresh} />
+                  <RecentTransactions onDataChange={handleDataRefresh} />
                 </div>
                 <div className="min-w-0">
-                  <AccountsSummary refreshTrigger={refreshTrigger} />
+                  <AccountsSummary />
                 </div>
               </div>
             </>

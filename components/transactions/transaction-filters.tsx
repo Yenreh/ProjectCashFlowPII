@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { CategorySelector } from "@/components/categories/category-selector"
-import type { Account, TransactionType } from "@/lib/types"
+import type { TransactionType } from "@/lib/types"
+import { useAccountsStore } from "@/lib/stores"
 
 interface TransactionFiltersProps {
   onFilterChange: (filters: FilterValues) => void
@@ -24,21 +25,12 @@ export interface FilterValues {
 
 export function TransactionFilters({ onFilterChange }: TransactionFiltersProps) {
   const [showFilters, setShowFilters] = useState(false)
-  const [accounts, setAccounts] = useState<Account[]>([])
+  const { accounts, fetchAccounts } = useAccountsStore()
   const [filters, setFilters] = useState<FilterValues>({})
 
   useEffect(() => {
-    async function fetchAccounts() {
-      try {
-        const response = await fetch("/api/accounts")
-        const data = await response.json()
-        setAccounts(data)
-      } catch (error) {
-        console.error("[v0] Error fetching accounts:", error)
-      }
-    }
     fetchAccounts()
-  }, [])
+  }, [fetchAccounts])
 
   const handleFilterChange = (key: keyof FilterValues, value: any) => {
     const newFilters = { ...filters, [key]: value }

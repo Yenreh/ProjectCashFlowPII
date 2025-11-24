@@ -5,7 +5,8 @@ import { TrendingUp, TrendingDown, Receipt } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { TransactionFormDialog } from "./transaction-form-dialog"
 import { ReceiptScanDialog } from "@/components/receipts/receipt-scan-dialog"
-import type { TransactionType, Account } from "@/lib/types"
+import type { TransactionType } from "@/lib/types"
+import { useAccountsStore } from "@/lib/stores/accounts-store"
 
 interface QuickTransactionButtonsProps {
   onSuccess?: () => void
@@ -14,20 +15,11 @@ interface QuickTransactionButtonsProps {
 export function QuickTransactionButtons({ onSuccess }: QuickTransactionButtonsProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [transactionType, setTransactionType] = useState<TransactionType>("gasto")
-  const [accounts, setAccounts] = useState<Account[]>([])
+  const { accounts, fetchAccounts } = useAccountsStore()
 
   useEffect(() => {
-    async function fetchAccounts() {
-      try {
-        const response = await fetch("/api/accounts")
-        const data = await response.json()
-        setAccounts(data)
-      } catch (error) {
-        console.error("Error fetching accounts:", error)
-      }
-    }
     fetchAccounts()
-  }, [])
+  }, [fetchAccounts])
 
   const handleOpenDialog = (type: TransactionType) => {
     setTransactionType(type)

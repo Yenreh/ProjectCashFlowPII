@@ -1,37 +1,20 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect } from "react"
 import { ArrowRight, Wallet } from "lucide-react"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/lib/format"
-import type { Account } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { useAccountsStore } from "@/lib/stores/accounts-store"
 
-interface AccountsSummaryProps {
-  refreshTrigger?: number
-}
-
-export function AccountsSummary({ refreshTrigger }: AccountsSummaryProps) {
-  const [accounts, setAccounts] = useState<Account[]>([])
-  const [loading, setLoading] = useState(true)
+export function AccountsSummary() {
+  const { accounts, loading, fetchAccounts } = useAccountsStore()
 
   useEffect(() => {
-    async function fetchAccounts() {
-      try {
-        const response = await fetch("/api/accounts")
-        const data = await response.json()
-        setAccounts(data)
-      } catch (error) {
-        console.error("[v0] Error fetching accounts:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
     fetchAccounts()
-  }, [refreshTrigger])
+  }, [fetchAccounts])
 
   // Calcular balance total con conversión explícita a número
   const totalBalance = accounts.reduce((sum, account) => {

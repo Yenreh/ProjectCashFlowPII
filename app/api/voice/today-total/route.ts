@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { dbQueries } from "@/lib/db"
+import { requireAuth } from "@/lib/auth-helpers"
 
 /**
  * GET /api/voice/today-total
@@ -7,6 +8,7 @@ import { dbQueries } from "@/lib/db"
  */
 export async function GET(request: NextRequest) {
   try {
+    const user = await requireAuth()
     const searchParams = request.nextUrl.searchParams
     const type = searchParams.get("type") as "ingreso" | "gasto" | null
 
@@ -15,7 +17,7 @@ export async function GET(request: NextRequest) {
     const todayStr = today.toISOString().split("T")[0]
 
     // Obtener transacciones del día
-    const todayTransactions = await dbQueries.getTransactions({
+    const todayTransactions = await dbQueries.getTransactions(user.id, {
       type: type || undefined,
       startDate: todayStr,
       endDate: todayStr,

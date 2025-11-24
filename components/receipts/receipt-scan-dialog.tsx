@@ -9,6 +9,7 @@ import { ReceiptValidationForm, type ReceiptValidationData } from "./receipt-val
 import type { ReceiptScanResponse } from "@/lib/receipt-types"
 import type { Account } from "@/lib/types"
 import { toast } from "sonner"
+import { useTransactionsStore, useStoreSync } from "@/lib/stores"
 
 interface ReceiptScanDialogProps {
   accounts: Account[]
@@ -28,6 +29,8 @@ export function ReceiptScanDialog({
   const [scanResult, setScanResult] = useState<ReceiptScanResponse | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
+  const { createTransaction } = useTransactionsStore()
+  const { invalidateAll } = useStoreSync()
 
   const handleScanComplete = (result: ReceiptScanResponse, preview?: string) => {
     if (result.success && result.data) {
@@ -46,35 +49,27 @@ export function ReceiptScanDialog({
     setIsCreating(true)
 
     try {
-      // Crear la transacción
-      const response = await fetch("/api/transactions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          account_id: data.accountId,
-          category_id: data.categoryId,
-          type: "gasto",
-          amount: data.amount,
-          description: data.description,
-          date: data.date,
-          source: "image",
-          image_hash: data.imageHash,
-          ocr_confidence: scanResult?.data?.confidence,
-          edited: data.edited,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error("Error al crear la transacción")
-      }
-
-      const transaction = await response.json()
+      // Crear la transacción usando el store
+      await createTransaction({
+        account_id: data.accountId,
+        category_id: data.categoryId,
+        type: "gasto",
+        amount: data.amount,
+        description: data.description,
+        date: data.date,
+        source: "image",
+        image_hash: data.imageHash,
+        ocr_confidence: scanResult?.data?.confidence,
+        edited: data.edited,
+      } as any)
 
       toast.success("Gasto registrado", {
         description: `$${data.amount.toLocaleString("es-CO")} ${data.currency} - ${data.description}`,
       })
+
+      // Invalidar todos los stores y notificar
+      invalidateAll()
+      onTransactionCreated?.()
 
       // Resetear el diálogo
       handleClose()

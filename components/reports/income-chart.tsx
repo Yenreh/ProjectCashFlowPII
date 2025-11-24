@@ -16,9 +16,17 @@ export function IncomeChart() {
       try {
         const response = await fetch("/api/reports/incomes-by-category")
         const data = await response.json()
-        setIncomes(data)
+        
+        // Validar que data sea un array
+        if (Array.isArray(data)) {
+          setIncomes(data)
+        } else {
+          console.error("[IncomeChart] Invalid data format:", data)
+          setIncomes([])
+        }
       } catch (error) {
-        console.error("[v0] Error fetching incomes:", error)
+        console.error("[IncomeChart] Error fetching incomes:", error)
+        setIncomes([])
       } finally {
         setLoading(false)
       }

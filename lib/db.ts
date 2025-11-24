@@ -6,40 +6,72 @@ const sql = process.env.DATABASE_URL ? neon(process.env.DATABASE_URL) : null
 
 // Consultas de base de datos
 export const dbQueries = {
-  // Categories
-  async getCategories(type?: "ingreso" | "gasto"): Promise<Category[]> {
+  // Categories - Returns global categories (user_id IS NULL) plus user's custom categories
+  async getCategories(userId?: number, type?: "ingreso" | "gasto"): Promise<Category[]> {
     if (!sql) return []
 
-    let query = `
-      SELECT id, name, category_type as type, icon, color, 
-             created_at::text as created_at
-      FROM categories
-    `
-
-    if (type) {
-      const result = await sql.query(query + ` WHERE category_type = $1`, [type])
+    // Build query dynamically based on parameters
+    if (userId && type) {
+      // User ID + Type filter
+      const result = await sql`
+        SELECT id, name, category_type as type, icon, color, 
+               created_at::text as created_at
+        FROM categories
+        WHERE (user_id IS NULL OR user_id = ${userId})
+          AND category_type = ${type}
+        ORDER BY name
+      `
+      return result as Category[]
+    } else if (userId) {
+      // Only user ID filter
+      const result = await sql`
+        SELECT id, name, category_type as type, icon, color, 
+               created_at::text as created_at
+        FROM categories
+        WHERE (user_id IS NULL OR user_id = ${userId})
+        ORDER BY name
+      `
+      return result as Category[]
+    } else if (type) {
+      // Only type filter (global categories only)
+      const result = await sql`
+        SELECT id, name, category_type as type, icon, color, 
+               created_at::text as created_at
+        FROM categories
+        WHERE user_id IS NULL AND category_type = ${type}
+        ORDER BY name
+      `
+      return result as Category[]
+    } else {
+      // No filters (global categories only)
+      const result = await sql`
+        SELECT id, name, category_type as type, icon, color, 
+               created_at::text as created_at
+        FROM categories
+        WHERE user_id IS NULL
+        ORDER BY name
+      `
       return result as Category[]
     }
-
-    const result = await sql.query(query)
-    return result as Category[]
   },
 
   // Accounts
-  async getAccounts(includeArchived = false): Promise<Account[]> {
+  async getAccounts(userId: number, includeArchived = false): Promise<Account[]> {
     if (!sql) return []
 
-    let query = `
-      SELECT id, name, account_type as type, balance::text, currency, is_archived,
-             created_at::text as created_at, updated_at::text as updated_at
-      FROM accounts
-    `
-
-    if (!includeArchived) {
-      query += ` WHERE is_archived = false`
-    }
-
-    const result = await sql.query(query)
+    const result = includeArchived
+      ? await sql`
+          SELECT id, name, account_type as type, balance::text, currency, is_archived,
+                 created_at::text as created_at, updated_at::text as updated_at
+          FROM accounts
+          WHERE user_id = ${userId}
+        `
+      : await sql`
+          SELECT id, name, account_type as type, balance::text, currency, is_archived,
+                 created_at::text as created_at, updated_at::text as updated_at
+          FROM accounts
+          WHERE user_id = ${userId} AND is_archived = false
+        `
     
     // Convert balance from string to number
     return result.map((account: any) => ({
@@ -48,15 +80,15 @@ export const dbQueries = {
     })) as Account[]
   },
 
-  async createAccount(account: Omit<Account, 'id' | 'created_at' | 'updated_at'>): Promise<Account> {
+  async createAccount(userId: number, account: Omit<Account, 'id' | 'created_at' | 'updated_at'>): Promise<Account> {
     if (!sql) throw new Error("Database not available")
 
-    const result = await sql.query(`
-      INSERT INTO accounts (name, account_type, balance, currency, is_archived)
-      VALUES ($1, $2, $3, $4, $5)
+    const result = await sql`
+      INSERT INTO accounts (user_id, name, account_type, balance, currency, is_archived)
+      VALUES (${userId}, ${account.name}, ${account.type}, ${account.balance}, ${account.currency}, ${account.is_archived})
       RETURNING id, name, account_type as type, balance::text, currency, 
                 is_archived, created_at::text as created_at, updated_at::text as updated_at
-    `, [account.name, account.type, account.balance, account.currency, account.is_archived])
+    `
 
     const createdAccount = result[0] as any
     return {
@@ -65,7 +97,7 @@ export const dbQueries = {
     } as Account
   },
 
-  async updateAccount(id: number, updates: Partial<Account>): Promise<Account> {
+  async updateAccount(userId: number, id: number, updates: Partial<Account>): Promise<Account> {
     if (!sql) throw new Error("Database not available")
 
     // Validar balance si se está actualizando
@@ -76,6 +108,15 @@ export const dbQueries = {
         throw new Error("Balance inválido: no es un número")
       }
       updates.balance = balanceNum
+    }
+
+    // Verificar que la cuenta pertenece al usuario
+    const ownership = await sql`
+      SELECT id FROM accounts WHERE id = ${id} AND user_id = ${userId}
+    `
+    
+    if (ownership.length === 0) {
+      throw new Error(`Cuenta con ID ${id} no encontrada o no tienes permiso`)
     }
 
     const fields: string[] = []
@@ -135,15 +176,15 @@ export const dbQueries = {
     } as Account
   },
 
-  async deleteAccount(id: number): Promise<boolean> {
+  async deleteAccount(userId: number, id: number): Promise<boolean> {
     if (!sql) throw new Error("Database not available")
 
-    await sql.query(`DELETE FROM accounts WHERE id = $1`, [id])
+    await sql`DELETE FROM accounts WHERE id = ${id} AND user_id = ${userId}`
     return true
   },
 
   // Transactions
-  async getTransactions(filters: {
+  async getTransactions(userId: number, filters: {
     type?: "ingreso" | "gasto"
     accountId?: number
     categoryId?: number
@@ -152,9 +193,43 @@ export const dbQueries = {
   } = {}): Promise<TransactionWithDetails[]> {
     if (!sql) return []
 
-    let query = `
+    // Build conditions array
+    const conditions: string[] = []
+    const params: any[] = [userId]
+    let paramIndex = 2
+
+    conditions.push(`t.user_id = $1`)
+
+    if (filters.type) {
+      conditions.push(`t.transaction_type = $${paramIndex}`)
+      params.push(filters.type)
+      paramIndex++
+    }
+    if (filters.accountId) {
+      conditions.push(`t.account_id = $${paramIndex}`)
+      params.push(filters.accountId)
+      paramIndex++
+    }
+    if (filters.categoryId) {
+      conditions.push(`t.category_id = $${paramIndex}`)
+      params.push(filters.categoryId)
+      paramIndex++
+    }
+    if (filters.startDate) {
+      conditions.push(`t.transaction_date >= $${paramIndex}`)
+      params.push(filters.startDate)
+      paramIndex++
+    }
+    if (filters.endDate) {
+      conditions.push(`t.transaction_date <= $${paramIndex}`)
+      params.push(filters.endDate)
+      paramIndex++
+    }
+
+    const whereClause = conditions.join(' AND ')
+    const query = `
       SELECT t.id, t.account_id, t.category_id, t.transaction_type as type, 
-             t.amount, t.description, t.transaction_date::text as date,
+             t.amount::text, t.description, t.transaction_date::text as date,
              t.created_at::text as created_at, t.updated_at::text as updated_at,
              t.source, t.image_hash, t.ocr_confidence, t.edited,
              a.name as account_name,
@@ -162,36 +237,17 @@ export const dbQueries = {
       FROM transactions t
       JOIN accounts a ON t.account_id = a.id
       JOIN categories c ON t.category_id = c.id
-      WHERE 1=1
+      WHERE ${whereClause}
+      ORDER BY t.transaction_date DESC, t.created_at DESC
     `
 
-    const values: any[] = []
-    let paramIndex = 1
-
-    if (filters.type) {
-      query += ` AND t.transaction_type = $${paramIndex++}`
-      values.push(filters.type)
+    const result: any[] = await sql.query(query, params) as any
+    
+    // Validar que result sea un array
+    if (!Array.isArray(result)) {
+      console.error("[DB] getTransactions returned non-array:", result)
+      return []
     }
-    if (filters.accountId) {
-      query += ` AND t.account_id = $${paramIndex++}`
-      values.push(filters.accountId)
-    }
-    if (filters.categoryId) {
-      query += ` AND t.category_id = $${paramIndex++}`
-      values.push(filters.categoryId)
-    }
-    if (filters.startDate) {
-      query += ` AND t.transaction_date >= $${paramIndex++}`
-      values.push(filters.startDate)
-    }
-    if (filters.endDate) {
-      query += ` AND t.transaction_date <= $${paramIndex++}`
-      values.push(filters.endDate)
-    }
-
-    query += ` ORDER BY t.transaction_date DESC, t.created_at DESC`
-
-    const result = await sql.query(query, values)
     
     // Convert amount from string to number
     return result.map((transaction: any) => ({
@@ -200,27 +256,16 @@ export const dbQueries = {
     })) as TransactionWithDetails[]
   },
 
-  async createTransaction(transaction: Omit<Transaction, 'id' | 'created_at' | 'updated_at'>): Promise<Transaction> {
+  async createTransaction(userId: number, transaction: Omit<Transaction, 'id' | 'created_at' | 'updated_at'>): Promise<Transaction> {
     if (!sql) throw new Error("Database not available")
 
-    const result = await sql.query(`
-      INSERT INTO transactions (account_id, category_id, transaction_type, amount, description, transaction_date, source, image_hash, ocr_confidence, edited)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    const result = await sql`
+      INSERT INTO transactions (user_id, account_id, category_id, transaction_type, amount, description, transaction_date, source, image_hash, ocr_confidence, edited)
+      VALUES (${userId}, ${transaction.account_id}, ${transaction.category_id}, ${transaction.type}, ${transaction.amount}, ${transaction.description}, ${transaction.date}, ${transaction.source || 'manual'}, ${transaction.image_hash || null}, ${transaction.ocr_confidence || null}, ${transaction.edited || false})
       RETURNING id, account_id, category_id, transaction_type as type, amount::text, description,
                 transaction_date::text as date, created_at::text as created_at, updated_at::text as updated_at,
                 source, image_hash, ocr_confidence, edited
-    `, [
-      transaction.account_id, 
-      transaction.category_id, 
-      transaction.type, 
-      transaction.amount, 
-      transaction.description, 
-      transaction.date,
-      transaction.source || 'manual',
-      transaction.image_hash || null,
-      transaction.ocr_confidence || null,
-      transaction.edited || false
-    ])
+    `
 
     const created = result[0] as any
     return {
@@ -229,81 +274,62 @@ export const dbQueries = {
     } as Transaction
   },
 
-  async updateTransaction(id: number, updates: Partial<Transaction>): Promise<Transaction> {
+  async updateTransaction(userId: number, id: number, updates: Partial<Transaction>): Promise<Transaction> {
     if (!sql) throw new Error("Database not available")
 
-    const fields: string[] = []
-    const values: any[] = []
-    let paramIndex = 1
-
-    if (updates.account_id !== undefined) {
-      fields.push(`account_id = $${paramIndex++}`)
-      values.push(updates.account_id)
-    }
-    if (updates.category_id !== undefined) {
-      fields.push(`category_id = $${paramIndex++}`)
-      values.push(updates.category_id)
-    }
-    if (updates.type !== undefined) {
-      fields.push(`transaction_type = $${paramIndex++}`)
-      values.push(updates.type)
-    }
-    if (updates.amount !== undefined) {
-      fields.push(`amount = $${paramIndex++}`)
-      values.push(updates.amount)
-    }
-    if (updates.description !== undefined) {
-      fields.push(`description = $${paramIndex++}`)
-      values.push(updates.description)
-    }
-    if (updates.date !== undefined) {
-      fields.push(`transaction_date = $${paramIndex++}`)
-      values.push(updates.date)
-    }
-    if (updates.source !== undefined) {
-      fields.push(`source = $${paramIndex++}`)
-      values.push(updates.source)
-    }
-    if (updates.image_hash !== undefined) {
-      fields.push(`image_hash = $${paramIndex++}`)
-      values.push(updates.image_hash)
-    }
-    if (updates.ocr_confidence !== undefined) {
-      fields.push(`ocr_confidence = $${paramIndex++}`)
-      values.push(updates.ocr_confidence)
-    }
-    if (updates.edited !== undefined) {
-      fields.push(`edited = $${paramIndex++}`)
-      values.push(updates.edited)
+    // Verificar ownership
+    const ownership = await sql`
+      SELECT id FROM transactions WHERE id = ${id} AND user_id = ${userId}
+    `
+    
+    if (ownership.length === 0) {
+      throw new Error(`Transacción con ID ${id} no encontrada o no tienes permiso`)
     }
 
-    values.push(id)
+    // Construir SET clause dinámicamente
+    const updates_parts: string[] = []
+    if (updates.account_id !== undefined) updates_parts.push(`account_id = ${updates.account_id}`)
+    if (updates.category_id !== undefined) updates_parts.push(`category_id = ${updates.category_id}`)
+    if (updates.type !== undefined) updates_parts.push(`transaction_type = '${updates.type}'`)
+    if (updates.amount !== undefined) updates_parts.push(`amount = ${updates.amount}`)
+    if (updates.description !== undefined) updates_parts.push(`description = '${updates.description}'`)
+    if (updates.date !== undefined) updates_parts.push(`transaction_date = '${updates.date}'`)
+    if (updates.source !== undefined) updates_parts.push(`source = '${updates.source}'`)
+    if (updates.image_hash !== undefined) updates_parts.push(`image_hash = '${updates.image_hash}'`)
+    if (updates.ocr_confidence !== undefined) updates_parts.push(`ocr_confidence = ${updates.ocr_confidence}`)
+    if (updates.edited !== undefined) updates_parts.push(`edited = ${updates.edited}`)
 
-    const result = await sql.query(`
+    if (updates_parts.length === 0) {
+      throw new Error("No hay campos para actualizar")
+    }
+
+    const query = `
       UPDATE transactions 
-      SET ${fields.join(', ')}
-      WHERE id = $${paramIndex}
+      SET ${updates_parts.join(', ')}
+      WHERE id = ${id}
       RETURNING id, account_id, category_id, transaction_type as type, amount::text, description,
                 transaction_date::text as date, created_at::text as created_at, updated_at::text as updated_at,
                 source, image_hash, ocr_confidence, edited
-    `, values)
+    `
 
+    const result: any[] = await sql.unsafe(query) as any
     const updated = result[0] as any
+    
     return {
       ...updated,
       amount: Number(updated.amount)
     } as Transaction
   },
 
-  async deleteTransaction(id: number): Promise<boolean> {
+  async deleteTransaction(userId: number, id: number): Promise<boolean> {
     if (!sql) throw new Error("Database not available")
 
-    await sql.query(`DELETE FROM transactions WHERE id = $1`, [id])
+    await sql`DELETE FROM transactions WHERE id = ${id} AND user_id = ${userId}`
     return true
   },
 
   // Dashboard metrics
-  async getDashboardMetrics(filters: { startDate?: string; endDate?: string } = {}): Promise<DashboardMetrics> {
+  async getDashboardMetrics(userId: number, filters: { startDate?: string; endDate?: string } = {}): Promise<DashboardMetrics> {
     if (!sql) {
       return {
         totalIncome: 0,
@@ -314,26 +340,25 @@ export const dbQueries = {
       }
     }
 
-    let whereClause = ''
-    const values: any[] = []
-    let paramIndex = 1
+    // Build dynamic parameters for metrics query
+    const conditions: string[] = []
+    const params: any[] = [userId]
+    let paramIndex = 2
 
-    if (filters.startDate || filters.endDate) {
-      const conditions: string[] = []
+    conditions.push(`user_id = $1`)
 
-      if (filters.startDate) {
-        conditions.push(`transaction_date >= $${paramIndex++}`)
-        values.push(filters.startDate)
-      }
-      if (filters.endDate) {
-        conditions.push(`transaction_date <= $${paramIndex++}`)
-        values.push(filters.endDate)
-      }
-
-      if (conditions.length > 0) {
-        whereClause = `WHERE ${conditions.join(' AND ')}`
-      }
+    if (filters.startDate) {
+      conditions.push(`transaction_date >= $${paramIndex}`)
+      params.push(filters.startDate)
+      paramIndex++
     }
+    if (filters.endDate) {
+      conditions.push(`transaction_date <= $${paramIndex}`)
+      params.push(filters.endDate)
+      paramIndex++
+    }
+
+    const whereClause = conditions.join(' AND ')
 
     const metricsQuery = `
       SELECT 
@@ -341,19 +366,38 @@ export const dbQueries = {
         COALESCE(SUM(CASE WHEN transaction_type = 'gasto' THEN amount ELSE 0 END), 0) as total_expenses,
         COUNT(*) as transactions_count
       FROM transactions
-      ${whereClause}
+      WHERE ${whereClause}
     `
 
-    const accountsQuery = `
+    const metricsResult: any[] = await sql.query(metricsQuery, params) as any
+    const accountsResult: any[] = await sql`
       SELECT COUNT(*) as accounts_count, COALESCE(SUM(balance), 0) as total_balance
       FROM accounts 
-      WHERE is_archived = false
+      WHERE is_archived = false AND user_id = ${userId}
     `
 
-    const [metricsResult, accountsResult] = await Promise.all([
-      sql.query(metricsQuery, values),
-      sql.query(accountsQuery)
-    ])
+    // Validar que los resultados sean arrays y tengan datos
+    if (!Array.isArray(metricsResult) || metricsResult.length === 0) {
+      console.error("[DB] getDashboardMetrics: metricsResult is invalid:", metricsResult)
+      return {
+        totalIncome: 0,
+        totalExpenses: 0,
+        balance: 0,
+        accountsCount: 0,
+        transactionsCount: 0
+      }
+    }
+
+    if (!Array.isArray(accountsResult) || accountsResult.length === 0) {
+      console.error("[DB] getDashboardMetrics: accountsResult is invalid:", accountsResult)
+      return {
+        totalIncome: 0,
+        totalExpenses: 0,
+        balance: 0,
+        accountsCount: 0,
+        transactionsCount: 0
+      }
+    }
 
     const metrics = metricsResult[0]
     const accounts = accountsResult[0]
@@ -368,22 +412,29 @@ export const dbQueries = {
   },
 
   // Expenses by category report
-  async getExpensesByCategory(filters: { startDate?: string; endDate?: string } = {}): Promise<CategoryExpense[]> {
+  async getExpensesByCategory(userId: number, filters: { startDate?: string; endDate?: string } = {}): Promise<CategoryExpense[]> {
     if (!sql) return []
 
-    let whereClause = `WHERE t.transaction_type = 'gasto'`
+    // Build dynamic parameters
     const conditions: string[] = []
+    const params: any[] = [userId]
+    let paramIndex = 2
+
+    conditions.push(`t.transaction_type = 'gasto'`)
+    conditions.push(`t.user_id = $1`)
 
     if (filters.startDate) {
-      conditions.push(`t.transaction_date >= '${filters.startDate}'`)
+      conditions.push(`t.transaction_date >= $${paramIndex}`)
+      params.push(filters.startDate)
+      paramIndex++
     }
     if (filters.endDate) {
-      conditions.push(`t.transaction_date <= '${filters.endDate}'`)
+      conditions.push(`t.transaction_date <= $${paramIndex}`)
+      params.push(filters.endDate)
+      paramIndex++
     }
-    
-    if (conditions.length > 0) {
-      whereClause += ` AND ${conditions.join(' AND ')}`
-    }
+
+    const whereClause = conditions.join(' AND ')
 
     const query = `
       SELECT 
@@ -393,12 +444,17 @@ export const dbQueries = {
         SUM(t.amount) as total
       FROM transactions t
       JOIN categories c ON t.category_id = c.id
-      ${whereClause}
+      WHERE ${whereClause}
       GROUP BY c.id, c.name, c.icon, c.color
       ORDER BY total DESC
     `
 
-    const result = await sql.query(query)
+    const result: any[] = await sql.query(query, params) as any
+    
+    if (!Array.isArray(result)) {
+      console.error("[DB] getExpensesByCategory returned non-array:", result)
+      return []
+    }
     
     // Calcular el total para los porcentajes
     const total = result.reduce((sum: number, row: any) => sum + Number(row.total), 0)
@@ -417,22 +473,29 @@ export const dbQueries = {
   },
 
   // Incomes by category report
-  async getIncomesByCategory(filters: { startDate?: string; endDate?: string } = {}): Promise<CategoryExpense[]> {
+  async getIncomesByCategory(userId: number, filters: { startDate?: string; endDate?: string } = {}): Promise<CategoryExpense[]> {
     if (!sql) return []
 
-    let whereClause = `WHERE t.transaction_type = 'ingreso'`
+    // Build dynamic parameters
     const conditions: string[] = []
+    const params: any[] = [userId]
+    let paramIndex = 2
+
+    conditions.push(`t.transaction_type = 'ingreso'`)
+    conditions.push(`t.user_id = $1`)
 
     if (filters.startDate) {
-      conditions.push(`t.transaction_date >= '${filters.startDate}'`)
+      conditions.push(`t.transaction_date >= $${paramIndex}`)
+      params.push(filters.startDate)
+      paramIndex++
     }
     if (filters.endDate) {
-      conditions.push(`t.transaction_date <= '${filters.endDate}'`)
+      conditions.push(`t.transaction_date <= $${paramIndex}`)
+      params.push(filters.endDate)
+      paramIndex++
     }
-    
-    if (conditions.length > 0) {
-      whereClause += ` AND ${conditions.join(' AND ')}`
-    }
+
+    const whereClause = conditions.join(' AND ')
 
     const query = `
       SELECT 
@@ -442,12 +505,17 @@ export const dbQueries = {
         SUM(t.amount) as total
       FROM transactions t
       JOIN categories c ON t.category_id = c.id
-      ${whereClause}
+      WHERE ${whereClause}
       GROUP BY c.id, c.name, c.icon, c.color
       ORDER BY total DESC
     `
 
-    const result = await sql.query(query)
+    const result: any[] = await sql.query(query, params) as any
+    
+    if (!Array.isArray(result)) {
+      console.error("[DB] getIncomesByCategory returned non-array:", result)
+      return []
+    }
     
     // Calcular el total para los porcentajes
     const total = result.reduce((sum: number, row: any) => sum + Number(row.total), 0)

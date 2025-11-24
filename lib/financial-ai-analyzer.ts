@@ -11,7 +11,7 @@ import type { SavingsInsight, SavingsAnalysis } from "./savings-analyzer"
 interface AIFinancialAnalysis {
   healthScore: number
   healthStatus: "excelente" | "bueno" | "regular" | "critico"
-  summary: string
+  summary?: string // Opcional
   keyInsights: Array<{
     type: "warning" | "opportunity" | "success" | "info"
     category?: string
@@ -100,20 +100,26 @@ REGLAS DE ANÁLISIS:
    - "success": Logros y buenos hábitos (ahorro alto, control de gastos)
    - "info": Información relevante (patrones de gasto, tendencias)
    
-   Para cada insight calcula:
+   Para cada insight incluye:
+   - type: El tipo de insight
+   - title: Título CORTO del insight (máximo 5 palabras)
+   - message: Descripción del problema u oportunidad
    - impact: Monto en COP del ahorro potencial o impacto
    - priority: "high" para urgente, "medium" para importante, "low" para sugerencias
-   - suggestion: Acción concreta y específica
+   - actionable: true si requiere acción
+   - suggestion: Acción concreta y específica para resolver
 
 4. **trends**: Analiza tendencias por categoría:
    - "aumentando": Gasto creciente en la categoría
    - "disminuyendo": Gasto decreciente
    - "estable": Sin cambios significativos
 
-5. **recommendations**: 3-5 recomendaciones ESPECÍFICAS y ACCIONABLES
+5. **recommendations**: Array de 3-5 STRINGS con recomendaciones ESPECÍFICAS y ACCIONABLES
+   - Cada elemento debe ser un STRING simple (NO objetos)
    - Deben ser concretas (no generales)
    - Mencionar montos específicos cuando sea posible
    - Priorizar por impacto
+   - Ejemplo: ["Reduce gastos en alimentación en 15%", "Crea un fondo de emergencia"]
 
 6. **motivationalMessage**: Mensaje personalizado motivacional
    - Si va bien: Refuerza comportamientos positivos
@@ -130,145 +136,66 @@ IMPORTANTE:
 Responde SOLO con JSON válido sin texto adicional.`
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash-exp",
+      model: "gemini-2.5-flash-lite", // Modelo ligero sin thoughts
       contents: [{ parts: [{ text: prompt }] }],
       config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "object",
-          properties: {
-            healthScore: {
-              type: "number",
-              description: "Puntaje de salud financiera 0-100"
-            },
-            healthStatus: {
-              type: "string",
-              enum: ["excelente", "bueno", "regular", "critico"],
-              description: "Estado de salud financiera"
-            },
-            summary: {
-              type: "string",
-              description: "Resumen ejecutivo del análisis (2-3 frases)"
-            },
-            keyInsights: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  type: {
-                    type: "string",
-                    enum: ["warning", "opportunity", "success", "info"]
-                  },
-                  category: {
-                    type: ["string", "null"],
-                    description: "Categoría relacionada si aplica"
-                  },
-                  title: {
-                    type: "string",
-                    description: "Título breve del insight"
-                  },
-                  message: {
-                    type: "string",
-                    description: "Descripción detallada"
-                  },
-                  impact: {
-                    type: "number",
-                    description: "Impacto en COP"
-                  },
-                  priority: {
-                    type: "string",
-                    enum: ["high", "medium", "low"]
-                  },
-                  actionable: {
-                    type: "boolean",
-                    description: "Si requiere acción del usuario"
-                  },
-                  suggestion: {
-                    type: ["string", "null"],
-                    description: "Sugerencia específica de acción"
-                  }
-                },
-                required: ["type", "title", "message", "impact", "priority", "actionable"]
-              }
-            },
-            trends: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  trend: {
-                    type: "string",
-                    enum: ["aumentando", "disminuyendo", "estable"]
-                  },
-                  category: {
-                    type: "string"
-                  },
-                  message: {
-                    type: "string"
-                  }
-                },
-                required: ["trend", "category", "message"]
-              }
-            },
-            recommendations: {
-              type: "array",
-              items: {
-                type: "string",
-                description: "Recomendación específica y accionable"
-              }
-            },
-            motivationalMessage: {
-              type: "string",
-              description: "Mensaje motivacional personalizado"
-            }
-          },
-          required: [
-            "healthScore",
-            "healthStatus",
-            "summary",
-            "keyInsights",
-            "trends",
-            "recommendations",
-            "motivationalMessage"
-          ]
-        },
         temperature: 0.3, // Balance entre creatividad y consistencia
-        maxOutputTokens: 2000
+        maxOutputTokens: 4000,
       }
     })
-
-    const responseText = response.text || 
-                        response.candidates?.[0]?.content?.parts?.[0]?.text ||
-                        "{}"
+    
+    let responseText = response.text || 
+                       response.candidates?.[0]?.content?.parts?.[0]?.text ||
+                       "{}"
+    
+    // Limpiar markdown code blocks (```json ... ``` o ``` ... ```)
+    responseText = responseText
+      .replace(/^```(?:json)?\s*/gm, '')
+      .replace(/```\s*$/gm, '')
+      .trim()
     
     let aiAnalysis: AIFinancialAnalysis
     try {
       aiAnalysis = JSON.parse(responseText)
     } catch (parseError) {
+      console.error('[Financial AI] JSON parse error:', parseError)
+      console.error('[Financial AI] Failed response text:', responseText)
       throw new Error("Failed to parse AI analysis response")
     }
 
     // Validar que la respuesta tenga la estructura esperada
     if (!aiAnalysis || typeof aiAnalysis !== 'object') {
+      console.error('[Financial AI] Invalid response structure')
       throw new Error("Invalid AI analysis response structure")
     }
     
     if (!Array.isArray(aiAnalysis.keyInsights)) {
+      console.warn('[Financial AI] keyInsights is not an array, setting to empty')
       aiAnalysis.keyInsights = []
     }
     
     if (!Array.isArray(aiAnalysis.trends)) {
+      console.warn('[Financial AI] trends is not an array, setting to empty')
       aiAnalysis.trends = []
     }
     
     if (!Array.isArray(aiAnalysis.recommendations)) {
+      console.warn('[Financial AI] recommendations is not an array, setting to empty')
       aiAnalysis.recommendations = []
+    }
+    
+    // Si todos los arrays están vacíos, es probable que el análisis falló
+    if (aiAnalysis.keyInsights.length === 0 && 
+        aiAnalysis.trends.length === 0 && 
+        aiAnalysis.recommendations.length === 0) {
+      console.warn('[Financial AI] Response contains no insights, using static fallback')
+      throw new Error("Empty analysis response from AI")
     }
 
     // Convertir al formato SavingsAnalysis esperado
     const savingsAnalysis: SavingsAnalysis = {
       healthScore: aiAnalysis.healthScore,
-      summary: aiAnalysis.summary,
+      summary: aiAnalysis.summary, // Opcional
       totalPotentialSavings: aiAnalysis.keyInsights
         .filter(i => i.type === "opportunity" || i.type === "warning")
         .reduce((sum, i) => sum + i.impact, 0),
@@ -293,11 +220,23 @@ Responde SOLO con JSON válido sin texto adicional.`
           trend: trend.trend
         }
       }),
-      recommendations: aiAnalysis.recommendations.map((rec, index) => ({
-        action: rec,
-        category: "",
-        expectedSavings: 0
-      })),
+      recommendations: aiAnalysis.recommendations.map((rec) => {
+        // Manejar tanto strings como objetos
+        if (typeof rec === 'string') {
+          return {
+            action: rec,
+            category: "",
+            expectedSavings: 0
+          }
+        }
+        // Si es objeto con estructura {suggestion, priority, etc}
+        const recObj = rec as any
+        return {
+          action: recObj.suggestion || recObj.action || String(rec),
+          category: "",
+          expectedSavings: 0
+        }
+      }),
       motivationalMessage: aiAnalysis.motivationalMessage
     }
 

@@ -16,9 +16,11 @@ import {
 } from "@/lib/nlp-gemini-service"
 import { dbQueries } from "@/lib/db"
 import type { VoiceProcessingResult } from "@/lib/voice-types"
+import { requireAuth } from "@/lib/auth-helpers"
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await requireAuth()
     const { transcription, confirmed, parsedData, isCorrection, originalCommand, pendingCommand } = await request.json()
 
     if (!transcription && !confirmed) {
@@ -30,8 +32,8 @@ export async function POST(request: NextRequest) {
 
     // Obtener contexto de la base de datos
     const [categories, accounts] = await Promise.all([
-      dbQueries.getCategories(),
-      dbQueries.getAccounts(),
+      dbQueries.getCategories(user.id),
+      dbQueries.getAccounts(user.id),
     ])
 
     // Si hay un comando pendiente (esperando información adicional como cuenta)
@@ -144,7 +146,7 @@ export async function POST(request: NextRequest) {
 
     // Si es una confirmación, procesar la transacción directamente
     if (confirmed && parsedData) {
-      return await processConfirmedTransaction(parsedData)
+      return await processConfirmedTransaction(parsedData, user.id)
     }
 
     // Analizar el comando de voz CON AI (fallback a regex si falla)
@@ -176,7 +178,7 @@ export async function POST(request: NextRequest) {
     
     // Si es una consulta, procesarla directamente
     if (parsed.intention === "consulta") {
-      return await processQuery(parsed)
+      return await processQuery(parsed, user.id)
     }
 
     // Si es navegación, procesarla directamente (HU-011)
@@ -273,14 +275,14 @@ export async function POST(request: NextRequest) {
 /**
  * Procesa consultas de voz (última transacción, total del día, etc.)
  */
-async function processQuery(parsed: any) {
+async function processQuery(parsed: any, userId: number) {
   try {
     const queryType = parsed.queryType || "general"
 
     switch (queryType) {
       case "ultimo_gasto": {
         // Obtener transacciones de tipo gasto directamente
-        const allTransactions = await dbQueries.getTransactions({ type: "gasto" })
+        const allTransactions = await dbQueries.getTransactions(userId, { type: "gasto" })
 
         if (allTransactions.length === 0) {
           const result: VoiceProcessingResult = {
@@ -305,7 +307,7 @@ async function processQuery(parsed: any) {
 
       case "ultimo_ingreso": {
         // Obtener transacciones de tipo ingreso directamente
-        const allTransactions = await dbQueries.getTransactions({ type: "ingreso" })
+        const allTransactions = await dbQueries.getTransactions(userId, { type: "ingreso" })
 
         if (allTransactions.length === 0) {
           const result: VoiceProcessingResult = {
@@ -344,7 +346,7 @@ async function processQuery(parsed: any) {
         const today = new Date().toISOString().split("T")[0]
 
         // Obtener transacciones del día directamente
-        const todayTransactions = await dbQueries.getTransactions({
+        const todayTransactions = await dbQueries.getTransactions(userId, {
           type,
           startDate: today,
           endDate: today,
@@ -380,7 +382,7 @@ async function processQuery(parsed: any) {
 
       case "balance": {
         // Obtener todas las cuentas con sus balances
-        const accounts = await dbQueries.getAccounts()
+        const accounts = await dbQueries.getAccounts(userId)
 
         if (accounts.length === 0) {
           const result: VoiceProcessingResult = {
@@ -435,14 +437,14 @@ async function processQuery(parsed: any) {
   }
 }
 
-async function processConfirmedTransaction(parsedData: any) {
+async function processConfirmedTransaction(parsedData: any, userId: number) {
   try {
     // Validar que tengamos los IDs necesarios
     if (!parsedData.categoryId || !parsedData.accountId) {
       // Intentar obtener los IDs si solo tenemos nombres
       const [categories, accounts] = await Promise.all([
-        dbQueries.getCategories(parsedData.transactionType),
-        dbQueries.getAccounts(),
+        dbQueries.getCategories(userId, parsedData.transactionType),
+        dbQueries.getAccounts(userId),
       ])
 
       if (!parsedData.categoryId && parsedData.categoryName) {
@@ -494,7 +496,7 @@ async function processConfirmedTransaction(parsedData: any) {
     }
 
     // Obtener la cuenta para actualizar balance
-    const accounts = await dbQueries.getAccounts()
+    const accounts = await dbQueries.getAccounts(userId)
     const account = accounts.find(a => a.id === parsedData.accountId)
 
     if (!account) {
@@ -512,7 +514,7 @@ async function processConfirmedTransaction(parsedData: any) {
     // HU-009: Verificar duplicados en ventana de 1 minuto
     const now = new Date()
     const oneMinuteAgo = new Date(now.getTime() - 60000)
-    const recentTransactions = await dbQueries.getTransactions({
+    const recentTransactions = await dbQueries.getTransactions(userId, {
       accountId: parsedData.accountId,
       startDate: oneMinuteAgo.toISOString().split("T")[0],
     })
@@ -538,7 +540,7 @@ async function processConfirmedTransaction(parsedData: any) {
     }
 
     // Crear la transacción
-    const transaction = await dbQueries.createTransaction({
+    const transaction = await dbQueries.createTransaction(userId, {
       account_id: parsedData.accountId,
       category_id: parsedData.categoryId,
       type: parsedData.transactionType,
@@ -565,7 +567,7 @@ async function processConfirmedTransaction(parsedData: any) {
     console.log(`[Voice] Actualizando balance: Cuenta=${parsedData.accountId} (${account.name}), Balance anterior=${oldBalance} (${typeof account.balance}), Monto=${amount}, Nuevo balance=${newBalance}`)
 
     try {
-      const updatedAccount = await dbQueries.updateAccount(parsedData.accountId, { balance: newBalance })
+      const updatedAccount = await dbQueries.updateAccount(userId, parsedData.accountId, { balance: newBalance })
       console.log(`[Voice] Balance actualizado exitosamente. Balance en DB: ${updatedAccount.balance}`)
     } catch (error) {
       console.error(`[Voice] ERROR actualizando balance:`, error)

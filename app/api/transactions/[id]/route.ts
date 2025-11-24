@@ -8,9 +8,11 @@ import {
   calculateNewBalance,
   formatBalanceForLog 
 } from "@/lib/balance-utils"
+import { requireAuth } from "@/lib/auth-helpers"
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const user = await requireAuth()
     const { id } = await params
     const transactionId = Number.parseInt(id)
     const body = await request.json()
@@ -37,7 +39,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (sql) {
       try {
         // Obtener la transacción original para revertir su efecto
-        const transactions = await dbQueries.getTransactions({})
+        const transactions = await dbQueries.getTransactions(user.id, {})
         const originalTransaction = transactions.find(t => t.id === transactionId)
         
         if (!originalTransaction) {
@@ -45,7 +47,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         }
 
         // Obtener todas las cuentas
-        const accounts = await dbQueries.getAccounts(true)
+        const accounts = await dbQueries.getAccounts(user.id, true)
         const originalAccount = accounts.find(a => a.id === originalTransaction.account_id)
         
         if (!originalAccount) {
@@ -65,14 +67,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         )
 
         // PASO 2: Actualizar la transacción en la base de datos
-        updatedTransaction = await dbQueries.updateTransaction(transactionId, body)
+        updatedTransaction = await dbQueries.updateTransaction(user.id, transactionId, body)
 
         // PASO 3: Aplicar el efecto de la nueva transacción
         if (newAccountId !== originalTransaction.account_id) {
           // Caso A: La cuenta cambió - actualizar ambas cuentas
           
           // Guardar el balance revertido en la cuenta original
-          await dbQueries.updateAccount(originalTransaction.account_id, { balance: revertedBalance })
+          await dbQueries.updateAccount(user.id, originalTransaction.account_id, { balance: revertedBalance })
           
           // Obtener la nueva cuenta
           const newAccount = accounts.find(a => a.id === newAccountId)
@@ -87,7 +89,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
             newType
           )
           
-          await dbQueries.updateAccount(newAccountId, { balance: newAccountBalance })
+          await dbQueries.updateAccount(user.id, newAccountId, { balance: newAccountBalance })
         } else {
           // Caso B: Misma cuenta - aplicar el efecto de la nueva transacción sobre el balance revertido
           
@@ -97,7 +99,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
             newType
           )
           
-          await dbQueries.updateAccount(originalTransaction.account_id, { balance: finalBalance })
+          await dbQueries.updateAccount(user.id, originalTransaction.account_id, { balance: finalBalance })
         }
 
       } catch (error) {
@@ -139,6 +141,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const user = await requireAuth()
     const { id } = await params
     const transactionId = Number.parseInt(id)
 
@@ -146,7 +149,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     if (sql) {
       try {
         // Obtener la transacción antes de eliminarla para revertir su efecto
-        const transactions = await dbQueries.getTransactions({})
+        const transactions = await dbQueries.getTransactions(user.id, {})
         const transaction = transactions.find(t => t.id === transactionId)
         
         if (!transaction) {
@@ -161,7 +164,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
         })
 
         // Obtener la cuenta
-        const accounts = await dbQueries.getAccounts(true)
+        const accounts = await dbQueries.getAccounts(user.id, true)
         const account = accounts.find(a => a.id === transaction.account_id)
         
         if (!account) {
@@ -180,11 +183,11 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
         console.log("[Transaction DELETE] ⚖️  New balance after revert:", formatBalanceForLog(newBalance))
 
         // Actualizar el balance de la cuenta
-        await dbQueries.updateAccount(transaction.account_id, { balance: newBalance })
+        await dbQueries.updateAccount(user.id, transaction.account_id, { balance: newBalance })
         console.log("[Transaction DELETE] ✅ Updated account balance to:", formatBalanceForLog(newBalance))
 
         // Eliminar la transacción
-        const success = await dbQueries.deleteTransaction(transactionId)
+        const success = await dbQueries.deleteTransaction(user.id, transactionId)
         if (!success) {
           return NextResponse.json({ error: "Error al eliminar transacción" }, { status: 500 })
         }

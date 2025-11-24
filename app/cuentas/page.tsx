@@ -7,28 +7,18 @@ import { AppLayout } from "@/components/layout/app-layout"
 import { AccountCard } from "@/components/accounts/account-card"
 import { AccountFormDialog } from "@/components/accounts/account-form-dialog"
 import type { Account } from "@/lib/types"
+import { useAccountsStore, useStoreSync } from "@/lib/stores"
+import { toast } from "sonner"
 
 export default function CuentasPage() {
-  const [accounts, setAccounts] = useState<Account[]>([])
-  const [loading, setLoading] = useState(true)
+  const { accounts, loading, fetchAccounts, updateAccount, deleteAccount } = useAccountsStore()
+  const { invalidateAll } = useStoreSync()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
 
-  const fetchAccounts = async () => {
-    try {
-      const response = await fetch("/api/accounts")
-      const data = await response.json()
-      setAccounts(data)
-    } catch (error) {
-      console.error("[v0] Error fetching accounts:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
   useEffect(() => {
     fetchAccounts()
-  }, [])
+  }, [fetchAccounts])
 
   const handleEdit = (account: Account) => {
     setSelectedAccount(account)
@@ -37,14 +27,12 @@ export default function CuentasPage() {
 
   const handleArchive = async (account: Account) => {
     try {
-      await fetch(`/api/accounts/${account.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ is_archived: 1 }),
-      })
-      fetchAccounts()
+      await updateAccount(account.id, { is_archived: 1 })
+      toast.success("Cuenta archivada")
+      invalidateAll()
     } catch (error) {
-      console.error("[v0] Error archiving account:", error)
+      console.error("[Cuentas] Error archiving account:", error)
+      toast.error("Error al archivar la cuenta")
     }
   }
 
@@ -52,10 +40,12 @@ export default function CuentasPage() {
     if (!confirm(`¿Estás seguro de eliminar la cuenta "${account.name}"?`)) return
 
     try {
-      await fetch(`/api/accounts/${account.id}`, { method: "DELETE" })
-      fetchAccounts()
+      await deleteAccount(account.id)
+      toast.success("Cuenta eliminada")
+      invalidateAll()
     } catch (error) {
-      console.error("[v0] Error deleting account:", error)
+      console.error("[Cuentas] Error deleting account:", error)
+      toast.error("Error al eliminar la cuenta")
     }
   }
 
@@ -64,8 +54,13 @@ export default function CuentasPage() {
     setDialogOpen(true)
   }
 
+  const handleSuccess = () => {
+    invalidateAll()
+    fetchAccounts()
+  }
+
   return (
-    <AppLayout onTransactionCreated={fetchAccounts}>
+    <AppLayout onTransactionCreated={handleSuccess}>
       <div className="container mx-auto px-3 sm:px-4 lg:px-8 xl:px-16 py-4 sm:py-8 pb-32 md:pb-8 max-w-7xl">
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -107,7 +102,7 @@ export default function CuentasPage() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         account={selectedAccount}
-        onSuccess={fetchAccounts}
+        onSuccess={handleSuccess}
       />
     </AppLayout>
   )

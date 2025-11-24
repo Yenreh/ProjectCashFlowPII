@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
 import { ArrowRight } from "lucide-react"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -8,36 +8,25 @@ import { Button } from "@/components/ui/button"
 import { TransactionItem } from "@/components/transactions/transaction-item"
 import { TransactionFormDialog } from "@/components/transactions/transaction-form-dialog"
 import type { TransactionWithDetails } from "@/lib/types"
-import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { useTransactionsStore, useStoreSync } from "@/lib/stores"
 
 interface RecentTransactionsProps {
-  refreshTrigger?: number
   onDataChange?: () => void
 }
 
-export function RecentTransactions({ refreshTrigger, onDataChange }: RecentTransactionsProps) {
-  const [transactions, setTransactions] = useState<TransactionWithDetails[]>([])
-  const [loading, setLoading] = useState(true)
+export function RecentTransactions({ onDataChange }: RecentTransactionsProps) {
+  const { transactions, loading, fetchTransactions, deleteTransaction } = useTransactionsStore()
+  const { invalidateAll } = useStoreSync()
   const [editingTransaction, setEditingTransaction] = useState<TransactionWithDetails | null>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const router = useRouter()
 
   useEffect(() => {
-    async function fetchTransactions() {
-      try {
-        const response = await fetch("/api/transactions")
-        const data = await response.json()
-        setTransactions(data.slice(0, 5)) // Only show 5 most recent
-      } catch (error) {
-        console.error("[v0] Error fetching transactions:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
     fetchTransactions()
-  }, [refreshTrigger])
+  }, [fetchTransactions])
+
+  // Obtener solo las 5 más recientes
+  const recentTransactions = transactions.slice(0, 5)
 
   const handleEdit = (transaction: TransactionWithDetails) => {
     setEditingTransaction(transaction)
@@ -50,42 +39,25 @@ export function RecentTransactions({ refreshTrigger, onDataChange }: RecentTrans
     }
 
     try {
-      const response = await fetch(`/api/transactions/${transaction.id}`, {
-        method: "DELETE",
-      })
-
-      if (!response.ok) throw new Error("Error al eliminar")
-
+      await deleteTransaction(transaction.id)
       toast.success("Transacción eliminada")
       
-      // 1. Primero notificar al padre para que actualice métricas y cuentas
+      // Invalidar todos los stores y notificar al padre
+      invalidateAll()
       onDataChange?.()
-      
-      // 2. Luego actualizar la lista local de transacciones
-      const newResponse = await fetch("/api/transactions")
-      const data = await newResponse.json()
-      setTransactions(data.slice(0, 5))
-      
-      // 3. Finalmente hacer router.refresh para asegurar todo esté actualizado
-      router.refresh()
     } catch (error) {
-      console.error("[v0] Error deleting transaction:", error)
+      console.error("[Recent Transactions] Error deleting:", error)
       toast.error("Error al eliminar la transacción")
     }
   }
 
   const handleSuccess = () => {
-    // 1. Primero notificar al padre para actualización inmediata
+    // Invalidar todos los stores y notificar al padre
+    invalidateAll()
     onDataChange?.()
     
-    // 2. Actualizar lista local de transacciones
-    fetch("/api/transactions")
-      .then((res) => res.json())
-      .then((data) => setTransactions(data.slice(0, 5)))
-      .catch((error) => console.error("[v0] Error refreshing transactions:", error))
-    
-    // 3. Router refresh para sincronización completa
-    router.refresh()
+    // Refrescar lista de transacciones
+    fetchTransactions()
   }
 
   return (
@@ -103,11 +75,11 @@ export function RecentTransactions({ refreshTrigger, onDataChange }: RecentTrans
       <CardContent className="overflow-x-hidden">
         {loading ? (
           <div className="text-center py-8 text-muted-foreground">Cargando...</div>
-        ) : transactions.length === 0 ? (
+        ) : recentTransactions.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground text-sm">No hay transacciones recientes</div>
         ) : (
           <div className="space-y-2 overflow-x-hidden">
-            {transactions.map((transaction) => (
+            {recentTransactions.map((transaction) => (
               <TransactionItem 
                 key={transaction.id} 
                 transaction={transaction} 
@@ -129,3 +101,4 @@ export function RecentTransactions({ refreshTrigger, onDataChange }: RecentTrans
     </>
   )
 }
+
