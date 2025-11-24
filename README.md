@@ -73,6 +73,9 @@ ELEVEN_LABS_API_KEY="tu_api_key_de_elevenlabs"
 # NextAuth
 NEXTAUTH_URL="http://localhost:3000"  # Solo para desarrollo local
 NEXTAUTH_SECRET="genera_un_secret_aleatorio_aqui"
+
+# Storage Mode (opcional - default: vercel_blob)
+STORAGE_MODE="local"  # Usa "local" en desarrollo, "vercel_blob" en producción
 ```
 
 **Obtener API Keys:**
@@ -157,9 +160,15 @@ Visualiza:
 4. El sistema extrae automáticamente:
    - Monto total
    - Fecha de compra
+   - Comercio/establecimiento
    - Categoría sugerida
 5. Valida y ajusta la información si es necesario
 6. Confirma para registrar la transacción
+
+**Nota sobre almacenamiento:**
+- En **desarrollo local**: Las imágenes se guardan en `/public/media/receipts`
+- En **producción (Vercel)**: Se usa Vercel Blob Storage automáticamente
+- Configura `STORAGE_MODE=local` o `STORAGE_MODE=vercel_blob` en variables de entorno
 
 ### Transacciones Manuales
 
@@ -206,13 +215,17 @@ Analiza tus finanzas:
 ### Automático vía GitHub
 
 1. Conecta tu repo en [vercel.com](https://vercel.com/)
-2. Configura variables de entorno en Vercel Dashboard:
+2. **Habilita Vercel Blob Storage**:
+   - Ve a tu proyecto → Storage → Create Database → Blob
+   - Esto configurará automáticamente `BLOB_READ_WRITE_TOKEN`
+3. Configura variables de entorno en Vercel Dashboard:
    - `DATABASE_URL`
    - `GEMINI_API_KEY`
    - `ELEVEN_LABS_API_KEY`
    - `NEXTAUTH_SECRET` (genera con `openssl rand -base64 32`)
+   - `STORAGE_MODE=vercel_blob` (para usar Blob Storage)
    - **Nota**: `NEXTAUTH_URL` NO es necesaria en Vercel (se detecta automáticamente)
-3. Deploy automático con cada push a main
+4. Deploy automático con cada push a main
 
 ### Manual vía CLI
 
@@ -230,12 +243,32 @@ vercel --prod
 vercel env add DATABASE_URL
 vercel env add GEMINI_API_KEY
 vercel env add NEXTAUTH_SECRET
+vercel env add STORAGE_MODE
 # No agregues NEXTAUTH_URL - Vercel lo maneja automáticamente
 ```
+
+### Configuración de Blob Storage
+
+Para que el escaneo de recibos funcione en Vercel:
+
+1. **Habilita Blob Storage** en tu proyecto de Vercel:
+   - Dashboard → Storage → Create Database → Blob
+   - Vercel inyectará automáticamente `BLOB_READ_WRITE_TOKEN`
+
+2. **Configura el modo de almacenamiento**:
+   ```bash
+   vercel env add STORAGE_MODE
+   # Valor: vercel_blob
+   ```
+
+3. **Para desarrollo local** (opcional):
+   - Puedes obtener un token de desarrollo en vercel.com/dashboard/stores
+   - O simplemente usa `STORAGE_MODE=local` para guardar en disco
 
 ### Recomendaciones de Producción
 
 - Usa [Neon](https://neon.tech/) para PostgreSQL serverless (gratis hasta 3GB)
+- Habilita **Vercel Blob Storage** para imágenes de recibos (gratis hasta 100GB transferencia/mes)
 - Configura límites de rate en las APIs de voz y chat
 - Habilita HTTPS (Vercel lo hace automáticamente)
 - Monitorea uso de APIs (Gemini tiene límites gratuitos generosos)
@@ -292,11 +325,15 @@ echo $DATABASE_URL
 psql $DATABASE_URL -c "SELECT 1"
 ```
 
-### API Keys no funcionan
+### Problemas con el escaneo de recibos en Vercel
 
-- Verifica que las keys estén en `.env.local`
-- Reinicia el servidor de desarrollo: `npm run dev`
-- Chequea límites de uso en Google AI Studio
+Si obtienes errores de "read-only file system" en Vercel:
+
+1. Verifica que `STORAGE_MODE=vercel_blob` esté configurado
+2. Asegúrate de haber habilitado Blob Storage en tu proyecto de Vercel
+3. Reinicia el deployment después de configurar las variables
+
+Para desarrollo local, usa `STORAGE_MODE=local` en tu `.env.local`
 
 ### Problemas con el scroll del selector de categorías
 

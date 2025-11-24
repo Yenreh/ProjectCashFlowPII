@@ -1,24 +1,28 @@
 /**
  * Servicio de almacenamiento de imágenes de recibos
- * Guarda las imágenes en /public/media/receipts usando hash SHA-256
+ * Soporta dos modos:
+ * - LOCAL: Guarda en /public/media/receipts (desarrollo)
+ * - VERCEL_BLOB: Usa Vercel Blob Storage (producción)
+ * 
+ * Configurar con STORAGE_MODE=local o STORAGE_MODE=vercel_blob
  */
 
+import { put, del, head } from "@vercel/blob"
 import { createHash } from "crypto"
 import { promises as fs } from "fs"
 import path from "path"
 
+const STORAGE_MODE = process.env.STORAGE_MODE || "vercel_blob"
 const RECEIPTS_DIR = path.join(process.cwd(), "public", "media", "receipts")
 
 /**
  * Genera un hash SHA-256 de los datos de la imagen
  */
 export function generateImageHash(imageData: string): string {
-  // Remover el prefijo data:image/... si existe
   const base64Data = imageData.includes(",") 
     ? imageData.split(",")[1] 
     : imageData
 
-  // Crear hash del contenido
   const hash = createHash("sha256")
     .update(base64Data)
     .digest("hex")
@@ -27,29 +31,25 @@ export function generateImageHash(imageData: string): string {
 }
 
 /**
- * Asegura que el directorio de recibos existe
+ * Asegura que el directorio de recibos existe (solo para modo local)
  */
 async function ensureReceiptsDirectory(): Promise<void> {
   try {
     await fs.access(RECEIPTS_DIR)
   } catch {
-    // El directorio no existe, crearlo recursivamente
     await fs.mkdir(RECEIPTS_DIR, { recursive: true })
   }
 }
 
 /**
- * Guarda una imagen de recibo en el sistema de archivos
- * @returns El hash de la imagen (nombre del archivo sin extensión)
+ * Guarda una imagen de recibo (local o Vercel Blob según configuración)
+ * @returns El hash de la imagen (identificador único)
  */
 export async function saveReceiptImage(imageData: string): Promise<string> {
-  await ensureReceiptsDirectory()
-
-  // Generar hash
   const hash = generateImageHash(imageData)
 
   // Extraer el tipo MIME y los datos base64
-  let mimeType = "image/jpeg" // Default
+  let mimeType = "image/jpeg"
   let base64Data = imageData
 
   if (imageData.startsWith("data:")) {
@@ -64,52 +64,100 @@ export async function saveReceiptImage(imageData: string): Promise<string> {
 
   // Determinar extensión basada en MIME type
   const extension = mimeType.includes("png") ? "png" : "jpg"
-  const filename = `${hash}.${extension}`
-  const filepath = path.join(RECEIPTS_DIR, filename)
-
-  // Verificar si el archivo ya existe
-  try {
-    await fs.access(filepath)
-    return hash
-  } catch {
-    // El archivo no existe, guardarlo
-  }
-
-  // Convertir base64 a buffer
   const buffer = Buffer.from(base64Data, "base64")
 
-  // Guardar el archivo
-  await fs.writeFile(filepath, buffer)
+  if (STORAGE_MODE === "local") {
+    // Modo LOCAL: Guardar en sistema de archivos
+    await ensureReceiptsDirectory()
+    const filename = `${hash}.${extension}`
+    const filepath = path.join(RECEIPTS_DIR, filename)
+
+    // Verificar si ya existe
+    try {
+      await fs.access(filepath)
+      console.log(`[Storage] ℹ️ Imagen ya existe (local): ${filename}`)
+      return hash
+    } catch {
+      await fs.writeFile(filepath, buffer)
+      console.log(`[Storage] ✅ Imagen guardada (local): ${filename}`)
+    }
+  } else {
+    // Modo VERCEL_BLOB: Subir a Vercel Blob
+    const filename = `receipts/${hash}.${extension}`
+    const blob = await put(filename, buffer, {
+      access: "public",
+      contentType: mimeType,
+    })
+    console.log(`[Storage] ✅ Imagen guardada (blob): ${blob.url}`)
+  }
 
   return hash
 }
 
 /**
- * Obtiene la ruta pública de una imagen de recibo
+ * Obtiene la URL pública de una imagen de recibo
  * @param hash Hash de la imagen
- * @returns URL relativa para usar en el frontend
+ * @returns URL de la imagen o null si no existe
  */
-export function getReceiptImageUrl(hash: string): string {
-  // Verificar si existe como .jpg o .png
+export async function getReceiptImageUrl(hash: string): Promise<string | null> {
   const extensions = ["jpg", "png"]
   
-  // Por defecto retornar .jpg, pero en producción deberías verificar cuál existe
-  return `/media/receipts/${hash}.jpg`
+  if (STORAGE_MODE === "local") {
+    // Modo LOCAL: Retornar ruta relativa
+    for (const ext of extensions) {
+      const filepath = path.join(RECEIPTS_DIR, `${hash}.${ext}`)
+      try {
+        await fs.access(filepath)
+        return `/media/receipts/${hash}.${ext}`
+      } catch {
+        continue
+      }
+    }
+  } else {
+    // Modo VERCEL_BLOB: Consultar Blob Storage
+    for (const ext of extensions) {
+      try {
+        const blobUrl = `receipts/${hash}.${ext}`
+        const info = await head(blobUrl)
+        return info.url
+      } catch {
+        continue
+      }
+    }
+  }
+  
+  return null
 }
 
 /**
- * Elimina una imagen de recibo del sistema de archivos
+ * Elimina una imagen de recibo
  */
 export async function deleteReceiptImage(hash: string): Promise<boolean> {
   const extensions = ["jpg", "png", "jpeg"]
   
-  for (const ext of extensions) {
-    const filepath = path.join(RECEIPTS_DIR, `${hash}.${ext}`)
-    try {
-      await fs.unlink(filepath)
-      return true
-    } catch (error) {
-      // Archivo no existe con esta extensión, intentar la siguiente
+  if (STORAGE_MODE === "local") {
+    // Modo LOCAL: Eliminar del sistema de archivos
+    for (const ext of extensions) {
+      const filepath = path.join(RECEIPTS_DIR, `${hash}.${ext}`)
+      try {
+        await fs.unlink(filepath)
+        console.log(`[Storage] 🗑️ Imagen eliminada (local): ${hash}.${ext}`)
+        return true
+      } catch {
+        continue
+      }
+    }
+  } else {
+    // Modo VERCEL_BLOB: Eliminar de Blob Storage
+    for (const ext of extensions) {
+      try {
+        const blobUrl = `receipts/${hash}.${ext}`
+        await del(blobUrl)
+        console.log(`[Storage] 🗑️ Imagen eliminada (blob): ${blobUrl}`)
+        return true
+      } catch {
+        continue
+      }
     }
   }
 
@@ -117,18 +165,32 @@ export async function deleteReceiptImage(hash: string): Promise<boolean> {
 }
 
 /**
- * Verifica si una imagen existe en el almacenamiento
+ * Verifica si una imagen existe
  */
 export async function receiptImageExists(hash: string): Promise<boolean> {
   const extensions = ["jpg", "png", "jpeg"]
   
-  for (const ext of extensions) {
-    const filepath = path.join(RECEIPTS_DIR, `${hash}.${ext}`)
-    try {
-      await fs.access(filepath)
-      return true
-    } catch {
-      // Continuar con la siguiente extensión
+  if (STORAGE_MODE === "local") {
+    // Modo LOCAL: Verificar en sistema de archivos
+    for (const ext of extensions) {
+      const filepath = path.join(RECEIPTS_DIR, `${hash}.${ext}`)
+      try {
+        await fs.access(filepath)
+        return true
+      } catch {
+        continue
+      }
+    }
+  } else {
+    // Modo VERCEL_BLOB: Verificar en Blob Storage
+    for (const ext of extensions) {
+      try {
+        const blobUrl = `receipts/${hash}.${ext}`
+        await head(blobUrl)
+        return true
+      } catch {
+        continue
+      }
     }
   }
   
@@ -140,24 +202,45 @@ export async function receiptImageExists(hash: string): Promise<boolean> {
  */
 export async function getReceiptImageInfo(hash: string): Promise<{
   exists: boolean
+  url?: string
   path?: string
   size?: number
   extension?: string
 } | null> {
   const extensions = ["jpg", "png", "jpeg"]
   
-  for (const ext of extensions) {
-    const filepath = path.join(RECEIPTS_DIR, `${hash}.${ext}`)
-    try {
-      const stats = await fs.stat(filepath)
-      return {
-        exists: true,
-        path: filepath,
-        size: stats.size,
-        extension: ext,
+  if (STORAGE_MODE === "local") {
+    // Modo LOCAL: Obtener info del sistema de archivos
+    for (const ext of extensions) {
+      const filepath = path.join(RECEIPTS_DIR, `${hash}.${ext}`)
+      try {
+        const stats = await fs.stat(filepath)
+        return {
+          exists: true,
+          path: filepath,
+          url: `/media/receipts/${hash}.${ext}`,
+          size: stats.size,
+          extension: ext,
+        }
+      } catch {
+        continue
       }
-    } catch {
-      // Continuar con la siguiente extensión
+    }
+  } else {
+    // Modo VERCEL_BLOB: Obtener info de Blob Storage
+    for (const ext of extensions) {
+      try {
+        const blobUrl = `receipts/${hash}.${ext}`
+        const info = await head(blobUrl)
+        return {
+          exists: true,
+          url: info.url,
+          size: info.size,
+          extension: ext,
+        }
+      } catch {
+        continue
+      }
     }
   }
   
