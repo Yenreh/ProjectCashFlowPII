@@ -4,6 +4,19 @@ Todos los cambios notables del proyecto serán documentados aquí.
 
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
+## [1.1.2] - 2024-11-24
+
+### Cambiado
+- Mejorada presentación de página de login con logo oficial
+- Logo CashFlow centrado con fondo circular y gradiente
+- Diseño visual mejorado con sombra y spacing optimizado
+
+## [1.1.1] - 2024-11-24
+
+### Cambiado
+- Actualizado título de página de registro a "CashFlow"
+- Mejoras menores en consistencia de branding
+
 ## [1.1.0] - 2024-11-24
 
 ### Agregado

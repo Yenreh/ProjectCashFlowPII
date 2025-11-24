@@ -44,7 +44,16 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-primary/10 p-4">
       <Card className="w-full max-w-md p-8">
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
+          <div className="flex justify-center mb-4">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-primary/80 p-3 shadow-lg">
+              <img 
+                src="/favicon.svg" 
+                alt="CashFlow logo" 
+                className="w-full h-full"
+              />
+            </div>
+          </div>
           <h1 className="text-3xl font-bold mb-2">CashFlow</h1>
           <p className="text-muted-foreground">Inicia sesión en tu cuenta</p>
         </div>
