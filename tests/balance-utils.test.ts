@@ -13,45 +13,7 @@ import {
   isValidBalance,
   formatBalanceForLog,
 } from "../lib/balance-utils"
-
-// Framework de testing simple
-function test(name: string, fn: () => void) {
-  try {
-    fn()
-    console.log(`[PASS] ${name}`)
-  } catch (error: any) {
-    console.log(`[FAIL] ${name}`)
-    console.log(`       ${error.message}`)
-    process.exit(1)
-  }
-}
-
-function assert(condition: boolean, message: string) {
-  if (!condition) {
-    throw new Error(message)
-  }
-}
-
-function assertEquals(actual: any, expected: any, message?: string) {
-  if (actual !== expected) {
-    throw new Error(
-      message || `Expected ${expected}, but got ${actual}`
-    )
-  }
-}
-
-function assertThrows(fn: () => void, expectedMessage?: string) {
-  try {
-    fn()
-    throw new Error("Function should have thrown an error")
-  } catch (error: any) {
-    if (expectedMessage && !error.message.includes(expectedMessage)) {
-      throw new Error(
-        `Expected error message to include "${expectedMessage}", but got "${error.message}"`
-      )
-    }
-  }
-}
+import { test, assert, assertEquals, assertThrows } from "./test-utils"
 
 // Tests
 console.log("\n=== Tests de Balance Utils ===\n")

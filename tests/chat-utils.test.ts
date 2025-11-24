@@ -9,24 +9,7 @@
  */
 
 import type { FinancialContext } from "../lib/chat-types"
-
-// Framework de testing simple
-function test(name: string, fn: () => void) {
-  try {
-    fn()
-    console.log(`[PASS] ${name}`)
-  } catch (error: any) {
-    console.log(`[FAIL] ${name}`)
-    console.log(`       ${error.message}`)
-    process.exit(1)
-  }
-}
-
-function assert(condition: boolean, message: string) {
-  if (!condition) {
-    throw new Error(message)
-  }
-}
+import { test, assert } from "./test-utils"
 
 // Funciones auxiliares extraídas de la lógica del chat
 function validateFinancialContext(context: FinancialContext): boolean {

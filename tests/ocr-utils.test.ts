@@ -8,31 +8,7 @@
  * Solo prueba las funciones de parsing y validación
  */
 
-// Framework de testing simple
-function test(name: string, fn: () => void) {
-  try {
-    fn()
-    console.log(`[PASS] ${name}`)
-  } catch (error: any) {
-    console.log(`[FAIL] ${name}`)
-    console.log(`       ${error.message}`)
-    process.exit(1)
-  }
-}
-
-function assert(condition: boolean, message: string) {
-  if (!condition) {
-    throw new Error(message)
-  }
-}
-
-function assertEquals(actual: any, expected: any, message?: string) {
-  if (actual !== expected) {
-    throw new Error(
-      message || `Expected ${expected}, but got ${actual}`
-    )
-  }
-}
+import { test, assert, assertEquals } from "./test-utils"
 
 // Funciones auxiliares extraídas de la lógica del OCR
 function parseAmountFromText(text: string): number {

@@ -11,24 +11,7 @@ import {
   formatDateShort,
   formatDateInput,
 } from "../lib/format"
-
-// Framework de testing simple
-function test(name: string, fn: () => void) {
-  try {
-    fn()
-    console.log(`[PASS] ${name}`)
-  } catch (error: any) {
-    console.log(`[FAIL] ${name}`)
-    console.log(`       ${error.message}`)
-    process.exit(1)
-  }
-}
-
-function assert(condition: boolean, message: string) {
-  if (!condition) {
-    throw new Error(message)
-  }
-}
+import { test, assert } from "./test-utils"
 
 // Tests
 console.log("\n=== Tests de Format Utils ===\n")
