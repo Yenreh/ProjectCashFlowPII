@@ -30,7 +30,12 @@ export async function GET(request: Request) {
     // Sort by date descending
     transactionsWithDetails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
-    return NextResponse.json(transactionsWithDetails)
+    return NextResponse.json(transactionsWithDetails, {
+      headers: {
+        // Cache solo en navegador, se revalida en cada navegación
+        'Cache-Control': 'private, max-age=10, must-revalidate',
+      }
+    })
   } catch (error) {
     console.error("[v0] Error fetching transactions:", error)
     return NextResponse.json({ error: "Error al obtener transacciones" }, { status: 500 })

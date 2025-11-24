@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS transactions (
 -- ============================================
 -- 4. CREAR ÍNDICES PARA OPTIMIZACIÓN
 -- ============================================
+-- Índices básicos
 CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(transaction_date);
@@ -91,6 +92,33 @@ CREATE INDEX IF NOT EXISTS idx_accounts_archived ON accounts(is_archived);
 CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON accounts(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_categories_user_id ON categories(user_id);
+
+-- Índices compuestos para optimización de queries frecuentes
+CREATE INDEX IF NOT EXISTS idx_transactions_user_date 
+  ON transactions(user_id, transaction_date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_user_type 
+  ON transactions(user_id, transaction_type);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_user_type_date 
+  ON transactions(user_id, transaction_type, transaction_date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_accounts_user_archived 
+  ON accounts(user_id, is_archived);
+
+-- Índices para categories (búsquedas por tipo)
+CREATE INDEX IF NOT EXISTS idx_categories_type 
+  ON categories(category_type) 
+  WHERE user_id IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_categories_user_type 
+  ON categories(user_id, category_type) 
+  WHERE user_id IS NOT NULL;
+
+-- Análisis de estadísticas para el optimizador de consultas
+ANALYZE transactions;
+ANALYZE accounts;
+ANALYZE categories;
 
 -- ============================================
 -- 5. CREAR FUNCIONES Y TRIGGERS
@@ -140,6 +168,11 @@ COMMENT ON COLUMN transactions.image_hash IS 'Hash SHA-256 de la imagen del reci
 COMMENT ON COLUMN transactions.ocr_confidence IS 'Nivel de confianza del OCR (0-1)';
 COMMENT ON COLUMN transactions.edited IS 'Indica si la transacción fue editada por el usuario después del escaneo';
 COMMENT ON COLUMN categories.user_id IS 'NULL = categoría global disponible para todos los usuarios';
+
+-- Comentarios para índices de optimización
+COMMENT ON INDEX idx_transactions_user_date IS 'Optimiza consultas de transacciones por usuario y fecha';
+COMMENT ON INDEX idx_transactions_user_type_date IS 'Optimiza reportes por tipo (ingreso/gasto) y fecha';
+COMMENT ON INDEX idx_accounts_user_archived IS 'Optimiza filtrado de cuentas activas por usuario';
 
 -- ============================================
 -- 7. SEED: CATEGORÍAS GLOBALES

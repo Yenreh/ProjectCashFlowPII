@@ -18,7 +18,12 @@ export async function GET(request: Request) {
     }
 
     const incomes = await dbQueries.getIncomesByCategory(user.id, filters)
-    return NextResponse.json(incomes)
+    return NextResponse.json(incomes, {
+      headers: {
+        // Reportes pueden cachear más tiempo (solo lectura)
+        'Cache-Control': 'private, max-age=30, must-revalidate',
+      }
+    })
   } catch (error) {
     console.error("[v0] Error fetching incomes by category:", error)
     return NextResponse.json(

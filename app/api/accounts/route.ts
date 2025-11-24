@@ -13,7 +13,12 @@ export async function GET(request: Request) {
 
     const accounts = await dbQueries.getAccounts(user.id, includeArchived)
 
-    return NextResponse.json(accounts)
+    return NextResponse.json(accounts, {
+      headers: {
+        // Cache solo en navegador, se revalida en cada navegación
+        'Cache-Control': 'private, max-age=10, must-revalidate',
+      }
+    })
   } catch (error) {
     console.error("[v0] Error fetching accounts:", error)
     if ((error as any).message === "Unauthorized") {

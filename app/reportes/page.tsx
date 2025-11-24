@@ -1,8 +1,24 @@
 "use client"
 
+import dynamic from "next/dynamic"
 import { AppLayout } from "@/components/layout/app-layout"
-import { ExpenseChart } from "@/components/reports/expense-chart"
-import { IncomeChart } from "@/components/reports/income-chart"
+
+// Lazy load de componentes pesados de gráficos
+const ExpenseChart = dynamic(
+  () => import("@/components/reports/expense-chart").then(mod => ({ default: mod.ExpenseChart })),
+  { 
+    loading: () => <div className="bg-card rounded-lg p-6 h-[400px] animate-pulse" />,
+    ssr: false 
+  }
+)
+
+const IncomeChart = dynamic(
+  () => import("@/components/reports/income-chart").then(mod => ({ default: mod.IncomeChart })),
+  { 
+    loading: () => <div className="bg-card rounded-lg p-6 h-[400px] animate-pulse" />,
+    ssr: false 
+  }
+)
 
 export default function ReportesPage() {
   return (

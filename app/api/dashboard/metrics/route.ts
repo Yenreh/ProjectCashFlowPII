@@ -20,7 +20,12 @@ export async function GET(request: Request) {
     
     const metrics = await dbQueries.getDashboardMetrics(user.id, filters)
 
-    return NextResponse.json(metrics)
+    return NextResponse.json(metrics, {
+      headers: {
+        // Cache solo en navegador, se revalida en cada navegación
+        'Cache-Control': 'private, max-age=10, must-revalidate',
+      }
+    })
   } catch (error) {
     console.error("[v0] Error fetching dashboard metrics:", error)
     return NextResponse.json({ error: "Error al obtener métricas" }, { status: 500 })

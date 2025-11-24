@@ -20,7 +20,12 @@ export async function GET(request: Request) {
     
     const categoryExpenses = await dbQueries.getExpensesByCategory(user.id, filters)
 
-    return NextResponse.json(categoryExpenses)
+    return NextResponse.json(categoryExpenses, {
+      headers: {
+        // Reportes pueden cachear más tiempo (solo lectura)
+        'Cache-Control': 'private, max-age=30, must-revalidate',
+      }
+    })
   } catch (error) {
     console.error("[v0] Error fetching expenses by category:", error)
     return NextResponse.json({ error: "Error al obtener gastos por categoría" }, { status: 500 })
