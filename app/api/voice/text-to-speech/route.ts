@@ -11,6 +11,20 @@ function getElevenLabsClient() {
 
 export async function POST(request: NextRequest) {
   try {
+    // Verificar si la API key está configurada
+    const apiKey = process.env.ELEVEN_LABS_API_KEY
+    console.log("[TTS] Verificando configuración...")
+    console.log("[TTS] API Key presente:", !!apiKey)
+    console.log("[TTS] API Key length:", apiKey?.length || 0)
+    
+    if (!apiKey) {
+      console.error("[TTS] ❌ ELEVEN_LABS_API_KEY no configurada")
+      return NextResponse.json(
+        { error: "Servicio de síntesis de voz no configurado" },
+        { status: 503 }
+      )
+    }
+
     const { text, voiceId } = await request.json()
 
     if (!text) {
@@ -21,8 +35,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Voice ID por defecto - Rachel (voz femenina en español)
-    // Puedes cambiar esto por otra voz de ElevenLabs
     const selectedVoiceId = voiceId || "21m00Tcm4TlvDq8ikWAM"
+
+    console.log(`[TTS] Generando audio para: "${text.substring(0, 50)}..."`)
+    console.log(`[TTS] Voice ID: ${selectedVoiceId}`)
 
     const elevenlabs = getElevenLabsClient()
     
@@ -48,6 +64,8 @@ export async function POST(request: NextRequest) {
 
     // Combinar todos los chunks
     const audioBuffer = Buffer.concat(chunks)
+    
+    console.log(`[TTS] ✅ Audio generado exitosamente (${audioBuffer.length} bytes)`)
 
     // Devolver el audio como respuesta
     return new NextResponse(audioBuffer, {
@@ -58,9 +76,16 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error("Error en text-to-speech:", error)
+    console.error("[TTS] ❌ Error generando audio:", error)
+    if (error instanceof Error) {
+      console.error("[TTS] Error message:", error.message)
+      console.error("[TTS] Error stack:", error.stack)
+    }
     return NextResponse.json(
-      { error: "Error al sintetizar el audio" },
+      { 
+        error: "Error al sintetizar el audio",
+        details: error instanceof Error ? error.message : "Error desconocido"
+      },
       { status: 500 }
     )
   }

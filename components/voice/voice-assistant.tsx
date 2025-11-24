@@ -118,6 +118,16 @@ export function VoiceAssistant({ onTransactionCreated }: VoiceAssistantProps) {
   }, [isListening, processingResult])
 
   async function handleTranscriptionComplete(text: string) {
+    // Si no hay texto, no procesar
+    if (!text || text.trim().length === 0) {
+      console.log('[Voice UI] ⚠️ Transcripción vacía, ignorando')
+      setError("No se detectó ningún comando. Por favor, intenta de nuevo.")
+      toast.warning("No se detectó audio", {
+        description: "Por favor, habla más cerca del micrófono e intenta de nuevo."
+      })
+      return
+    }
+    
     setIsProcessing(true)
     setError(null)
 
@@ -304,12 +314,20 @@ export function VoiceAssistant({ onTransactionCreated }: VoiceAssistantProps) {
       })
 
       if (!response.ok) {
-        console.error("Error al sintetizar voz")
+        console.log("[Voice] TTS no disponible, status:", response.status)
         setIsSpeaking(false)
         return
       }
 
       const audioBlob = await response.blob()
+      
+      // Verificar que realmente recibimos audio
+      if (audioBlob.size === 0) {
+        console.log("[Voice] Audio vacío recibido")
+        setIsSpeaking(false)
+        return
+      }
+      
       const audioUrl = URL.createObjectURL(audioBlob)
 
       // Reproducir el audio
@@ -324,16 +342,17 @@ export function VoiceAssistant({ onTransactionCreated }: VoiceAssistantProps) {
       }
       
       // Manejar errores de reproducción
-      audioRef.current.onerror = () => {
-        console.error("Error al reproducir audio")
+      audioRef.current.onerror = (e) => {
+        console.log("[Voice] Error al reproducir audio:", e)
         setIsSpeaking(false)
         URL.revokeObjectURL(audioUrl)
       }
 
+      console.log("[Voice] Reproduciendo audio de", audioBlob.size, "bytes")
       await audioRef.current.play()
 
     } catch (err) {
-      console.error("Error reproduciendo audio:", err)
+      console.log("[Voice] Error en TTS:", err instanceof Error ? err.message : 'Error desconocido')
       setIsSpeaking(false)
     }
   }
@@ -438,8 +457,9 @@ export function VoiceAssistant({ onTransactionCreated }: VoiceAssistantProps) {
     setIsInCorrectionMode(false)
     setOriginalCommand(null)
     setPendingCommand(null)
-    pendingCommandRef.current = null  // Limpiar ref también
+    pendingCommandRef.current = null
     setHasManualEdits(false)
+    setIsProcessing(false) // Asegurar que deja de procesar
     stopAudio()
     cancelRecording()
   }
@@ -523,8 +543,8 @@ export function VoiceAssistant({ onTransactionCreated }: VoiceAssistantProps) {
     await handleTranscriptionComplete(command)
   }
 
-  const showRecordButton = recordingState === "idle" && !processingResult?.transactionId
-  const showStopButton = isListening
+  const showRecordButton = !isListening && !isProcessing && recordingState === "idle" && !processingResult?.transactionId
+  const showStopButton = isListening && recordingState === "recording"
   const showConfirmation = processingResult?.needsConfirmation || (hasManualEdits && hasMinimumRequiredData())
   const showSuccess = processingResult?.success && processingResult.transactionId
 
@@ -553,7 +573,7 @@ export function VoiceAssistant({ onTransactionCreated }: VoiceAssistantProps) {
       <div className="px-4 py-3 space-y-3 max-h-[calc(100vh-200px)] overflow-y-auto" aria-live="polite">
         {/* Botones de control - Más compacto */}
         <div className="flex flex-col items-center gap-3 min-h-[80px] justify-center">
-          {showRecordButton && (
+          {showRecordButton && !isProcessing && !isSpeaking && (
             <Button
               size="lg"
               variant="default"
@@ -571,15 +591,27 @@ export function VoiceAssistant({ onTransactionCreated }: VoiceAssistantProps) {
               variant="destructive"
               className="h-16 w-16 rounded-full animate-pulse transition-all shadow-lg"
               onClick={stopRecording}
+              aria-label="Detener grabación de voz"
             >
               <MicOff className="h-6 w-6" />
             </Button>
           )}
 
-          {isProcessing && (
-            <div className="flex items-center gap-2 transition-opacity text-sm">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              <span className="text-muted-foreground">Procesando...</span>
+          {(isProcessing || recordingState === "processing") && !isSpeaking && (
+            <div className="flex flex-col items-center gap-2 transition-opacity">
+              <div className="flex items-center gap-2 text-sm">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                <span className="text-muted-foreground">Procesando...</span>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleCancel}
+                className="text-xs h-8"
+              >
+                <X className="h-3 w-3 mr-1" />
+                Cancelar
+              </Button>
             </div>
           )}
 

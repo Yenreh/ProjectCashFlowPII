@@ -32,10 +32,10 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
     }
 
     const recognition = new SpeechRecognition()
-    recognition.lang = "es-ES"
+    recognition.lang = "es-CO"  // Español colombiano para mejor reconocimiento
     recognition.continuous = false
     recognition.interimResults = false
-    recognition.maxAlternatives = 1
+    recognition.maxAlternatives = 3  // Aumentar alternativas para mejor precisión
 
     recognition.onstart = () => {
       setIsListening(true)
@@ -52,15 +52,31 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
 
     recognition.onerror = (event: any) => {
       console.error("Error en reconocimiento de voz:", event.error)
-      setRecordingState("error")
+      setRecordingState("idle")
       setIsListening(false)
-      options.onError?.(new Error(`Error de reconocimiento: ${event.error}`))
+      
+      // Si el error es "no-speech", mostrar mensaje más amigable
+      if (event.error === "no-speech") {
+        options.onError?.(new Error("No se detectó ningún audio. Por favor, intenta de nuevo."))
+      } else {
+        options.onError?.(new Error(`Error de reconocimiento: ${event.error}`))
+      }
     }
 
     recognition.onend = () => {
+      console.log("[Voice Recorder] Recognition ended, current state:", recordingState)
       setIsListening(false)
-      if (recordingState === "recording") {
-        setRecordingState("idle")
+      
+      // Si terminó pero no hubo resultado, volver a idle
+      if (recordingState === "recording" || recordingState === "processing") {
+        // Esperar un momento para ver si llega onresult
+        setTimeout(() => {
+          // Si después de 500ms sigue en processing y no hay transcripción, volver a idle
+          if (recordingState === "processing") {
+            console.log("[Voice Recorder] No result received, resetting to idle")
+            setRecordingState("idle")
+          }
+        }, 500)
       }
     }
 

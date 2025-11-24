@@ -37,104 +37,112 @@ export async function parseVoiceCommandWithAI(
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
     console.warn("[NLP Gemini] No GEMINI_API_KEY, using fallback regex parser")
-    // Aquí podrías llamar al parser original como fallback
     throw new Error("GEMINI_API_KEY no configurada")
   }
 
   const ai = new GoogleGenAI({ apiKey })
 
+  // Pre-procesar la transcripción para normalizar formatos
+  let normalizedTranscription = transcription
+    .replace(/\$/g, '')  // Eliminar símbolo $
+    .replace(/\s+/g, ' ')  // Normalizar espacios múltiples a uno solo
+    .trim()
+
   // Construir lista de categorías y cuentas disponibles
   const categoryList = dbCategories.map(c => `${c.name} (${c.type})`).join(", ")
   const accountList = dbAccounts.map(a => a.name).join(", ")
 
-  const prompt = `Eres un asistente de análisis de comandos de voz para una app de finanzas personales en español colombiano.
-
-Analiza el siguiente comando de voz y extrae la información en formato JSON estructurado.
+  const prompt = `Eres un asistente experto en análisis de comandos de voz para finanzas personales en español colombiano.
 
 CATEGORÍAS DISPONIBLES: ${categoryList}
 CUENTAS DISPONIBLES: ${accountList}
 
-REGLAS IMPORTANTES:
-1. **intention**: Identifica la intención principal
-   - "ingreso": Usuario registra dinero que recibió (recibí, gané, me pagaron, ingreso, cobré)
-   - "gasto": Usuario registra dinero que gastó (gasté, compré, pagué, gasto)
+COMANDO A ANALIZAR: "${normalizedTranscription}"
+
+Analiza el comando y extrae la información estructurada. IMPORTANTE:
+
+1. **intention** - Identifica la intención principal:
+   - "ingreso": Usuario registra dinero que recibió (recibí, gané, me pagaron, ingreso, cobré, me entró)
+   - "gasto": Usuario registra dinero que gastó (gasté, compré, pagué, gasto, saqué)
    - "consulta": Usuario pregunta por información (cuánto, balance, saldo, último)
    - "navegacion": Usuario quiere ir a otra sección (ir a, abrir, mostrar)
    - "control": Usuario controla el asistente (activar, desactivar, cancelar)
-   - "desconocido": No se puede identificar
+   - "desconocido": No se puede identificar claramente
 
-2. **amount**: Extrae el monto en pesos colombianos
-   - En Colombia se usa PUNTO para miles: "65.600" = 65600
-   - Convierte a número entero SIN separadores
-   - Ejemplos: "50 mil" = 50000, "1.500" = 1500, "dos millones" = 2000000
-   - Si dice "mil", multiplica por 1000
-   - Si no hay monto, deja en null
+2. **amount** - Extrae el monto en pesos colombianos:
+   - En Colombia se usa PUNTO como separador de miles: "15.000" = 15000
+   - También pueden haber ESPACIOS como separador: "15 000" = 15000
+   - Entiende formatos como: "50 mil" = 50000, "dos millones" = 2000000
+   - IGNORA símbolos de moneda ($, pesos, COP)
+   - Convierte SIEMPRE a número entero SIN separadores
+   - Ejemplos de conversión:
+     * "$15 000" → 15000
+     * "15.000" → 15000
+     * "50 mil" → 50000
+     * "1.500.000" → 1500000
+   - Si no hay monto explícito → null
 
-3. **categoryName**: Encuentra la categoría más apropiada
-   - DEBES seleccionar UNA de las categorías disponibles (nombre exacto de la lista)
-   - Analiza el contexto completo del comando, no solo palabras específicas
-   - Ejemplos de mapeo:
-     * "comida", "comer", "hamburguesa", "pizza", "almuerzo", "desayuno", "restaurante" → Alimentación
-     * "taxi", "uber", "bus", "gasolina" → Transporte
-     * "arriendo", "alquiler", "casa" → Vivienda
-     * "luz", "agua", "internet", "netflix" → Servicios
-     * "cine", "concierto", "juegos" → Entretenimiento
-     * "medicina", "doctor", "farmacia" → Salud
-     * "curso", "libro", "universidad" → Educación
-     * "ropa", "zapatos", "compras" → Compras
-     * "salario", "sueldo", "pago", "nómina" → Salario
-     * "freelance", "proyecto independiente" → Freelance
-     * "dividendos", "rendimiento" → Inversiones
-     * "venta", "vendí" → Ventas
-   - Si el usuario dice "en X" o "de X", X es la categoría
-   - Si NO encuentras coincidencia clara y es gasto → "Otros Gastos"
-   - Si NO encuentras coincidencia clara y es ingreso → "Otros Ingresos"
+3. **categoryName** - Encuentra la categoría MÁS APROPIADA de la lista:
+   - DEBES seleccionar UNA categoría de las disponibles (nombre EXACTO)
+   - Analiza el contexto COMPLETO del comando
+   - Mapeo de palabras clave a categorías:
+     * "comida", "comer", "almuerzo", "desayuno", "cena", "restaurante", "hamburguesa", "pizza" → Alimentación
+     * "taxi", "uber", "bus", "transporte", "gasolina", "buseta" → Transporte
+     * "arriendo", "alquiler", "casa", "apartamento" → Vivienda
+     * "luz", "agua", "internet", "gas", "servicios", "netflix" → Servicios
+     * "cine", "fiesta", "rumba", "concierto", "juegos" → Entretenimiento
+     * "ropa", "zapatos", "compras", "mall" → Compras
+     * "salario", "sueldo", "nómina", "pago mensual" → Salario
+     * "freelance", "proyecto independiente", "trabajo extra" → Freelance
+   - Si el comando dice "en [palabra]" o "de [palabra]", esa palabra es la categoría
+   - Si NO encuentras match claro: usa "Otros Gastos" (si es gasto) o "Otros Ingresos" (si es ingreso)
    - NUNCA dejes categoryName en null si detectaste intention "gasto" o "ingreso"
 
-4. **accountName**: Encuentra la cuenta mencionada
-   - Debe ser UNA de las cuentas disponibles (nombre exacto)
-   - Busca: "en X", "de X", "desde X", "con X"
-   - Si no se menciona cuenta, deja en null
+4. **accountName** - Encuentra la cuenta mencionada:
+   - Debe ser UNA de las cuentas disponibles (nombre EXACTO de la lista)
+   - Busca menciones como: "en X", "de X", "desde X", "con X", "usando X"
+   - EJEMPLOS IMPORTANTES:
+     * "gasté 5000 en caja social" → accountName: "caja social"
+     * "ingreso de 100000 en bancolombia" → accountName: "bancolombia"
+     * "pagué 15000 con efectivo" → accountName: "efectivo"
+     * "transferí desde nequi" → accountName: "nequi"
+   - Extrae SOLO el nombre después de "en", "de", "desde", "con", "usando"
+   - NO incluyas la preposición en accountName
+   - Mapeo flexible para bancos colombianos:
+     * "banco", "bancolombia", "banco colombia" → "bancolombia"
+     * "caja", "social", "caja social", "bcsc" → "caja social"
+     * "efectivo", "cash" → "efectivo"
+     * "nequi" → "nequi"
+     * "davi", "davivienda" → "davivienda"
+   - Si NO se menciona cuenta explícitamente → null
 
-5. **description**: Texto descriptivo limpio
-   - Resume lo que el usuario dijo de forma natural
-   - Elimina muletillas y palabras redundantes
-   - Máximo 100 caracteres
+5. **description** - Resumen natural y limpio del comando (máximo 100 caracteres)
 
-6. **transactionType**: Solo para intention "ingreso" o "gasto"
-   - Debe coincidir con el tipo de la categoría elegida
-   - Si no es transacción, deja en null
+6. **transactionType** - Solo para intention "ingreso" o "gasto":
+   - Debe coincidir con la intención ("ingreso" o "gasto")
+   - Para otras intenciones → null
 
-7. **queryType**: Solo para intention "consulta"
-   - "balance": Pregunta por saldo o balance total
-   - "ultimo_gasto": Pregunta por el último gasto
-   - "ultimo_ingreso": Pregunta por el último ingreso
-   - "total_hoy": Pregunta por totales de hoy
-   - "general": Otra pregunta general
-
-8. **navigationType**: Solo para intention "navegacion"
-   - "inicio": Ir a inicio/home
-   - "cuentas": Ir a cuentas
-   - "transacciones": Ir a transacciones
-   - "reportes": Ir a reportes
-
-9. **controlType**: Solo para intention "control"
-   - "activar_continuo": Activar modo escucha continua
-   - "desactivar_continuo": Desactivar asistente
-   - "cancelar": Cancelar operación actual
-
-10. **confidence**: Nivel de confianza del análisis
-    - "alta": Toda la información clave está clara (intention + amount + category para transacciones)
-    - "media": Falta algún dato secundario o hay ambigüedad menor
-    - "baja": Falta información crítica o el comando es muy ambiguo
+7. **confidence** - Nivel de confianza del análisis:
+   - "alta": Toda la información clave está clara (intention + amount + category para transacciones)
+   - "media": Falta algún dato secundario pero el comando es comprensible
+   - "baja": Falta información crítica o el comando es muy ambiguo
 
 IMPORTANTE: 
-- Responde SOLO con JSON válido, sin texto adicional
+- Responde SOLO con JSON válido, sin texto adicional antes o después
 - Usa nombres EXACTOS de categorías y cuentas de las listas proporcionadas
-- Si no encuentras un dato, usa null (no inventes)
-- Para montos colombianos, recuerda que el punto es separador de miles
+- Si no encuentras un dato, usa null
+- Para montos colombianos, el punto (.) es separador de miles
 
-COMANDO A ANALIZAR: "${transcription}"`
+Ejemplo de respuesta correcta:
+{
+  "intention": "gasto",
+  "transactionType": "gasto",
+  "amount": 15000,
+  "categoryName": "Alimentación",
+  "accountName": null,
+  "description": "Gasto de 15000 en comida",
+  "confidence": "alta"
+}`
 
   try {
     const response = await ai.models.generateContent({
@@ -194,8 +202,8 @@ COMANDO A ANALIZAR: "${transcription}"`
           },
           required: ["intention", "description", "confidence"]
         },
-        temperature: 0.1, // Muy bajo para respuestas consistentes
-        maxOutputTokens: 500
+        temperature: 0.2, // Balance entre precisión y flexibilidad
+        maxOutputTokens: 400
       }
     })
 
@@ -203,14 +211,40 @@ COMANDO A ANALIZAR: "${transcription}"`
                         response.candidates?.[0]?.content?.parts?.[0]?.text ||
                         "{}"
     
-    console.log("[NLP Gemini] 📝 Raw AI response:", responseText)
-    
     // Intentar reparar JSON incompleto
     let parsed: GeminiParseResult
     try {
       parsed = JSON.parse(responseText)
     } catch (error) {
-      console.log("[NLP Gemini] ⚠️ JSON incompleto, intentando reparar...")
+      console.log("[NLP Gemini] ⚠️ JSON incompleto, intentando extraer datos...")
+      
+      // Intentar extraer datos clave del JSON incompleto antes de reparar
+      const partialData: Partial<GeminiParseResult> = {}
+      
+      // Extraer accountName si existe en el JSON parcial
+      const accountMatch = responseText.match(/"accountName"\s*:\s*"([^"]+)"/i)
+      if (accountMatch) {
+        partialData.accountName = accountMatch[1]
+      }
+      
+      // Extraer amount si existe
+      const amountMatch = responseText.match(/"amount"\s*:\s*(\d+)/i)
+      if (amountMatch) {
+        partialData.amount = parseInt(amountMatch[1], 10)
+      }
+      
+      // Extraer categoryName si existe
+      const categoryMatch = responseText.match(/"categoryName"\s*:\s*"([^"]+)"/i)
+      if (categoryMatch) {
+        partialData.categoryName = categoryMatch[1]
+      }
+      
+      // Extraer intention si existe
+      const intentionMatch = responseText.match(/"intention"\s*:\s*"([^"]+)"/i)
+      if (intentionMatch) {
+        partialData.intention = intentionMatch[1] as VoiceIntention
+      }
+      
       // Intentar cerrar llaves faltantes
       let repairedJson = responseText.trim()
       const openBraces = (repairedJson.match(/{/g) || []).length
@@ -224,26 +258,16 @@ COMANDO A ANALIZAR: "${transcription}"`
       // Intentar parsear de nuevo
       try {
         parsed = JSON.parse(repairedJson)
-        console.log("[NLP Gemini] ✅ JSON reparado exitosamente")
       } catch (secondError) {
-        console.log("[NLP Gemini] ❌ No se pudo reparar JSON, usando valores por defecto")
+        console.log("[NLP Gemini] ❌ JSON no reparable, usando valores extraídos")
         parsed = {
-          intention: 'desconocido',
+          intention: partialData.intention || 'desconocido',
           description: transcription,
-          confidence: 'baja'
+          confidence: 'baja',
+          ...partialData
         }
       }
     }
-
-    console.log("[NLP Gemini] 🤖 AI parsed command:", {
-      transcription,
-      intention: parsed.intention,
-      amount: parsed.amount,
-      category: parsed.categoryName,
-      account: parsed.accountName,
-      confidence: parsed.confidence,
-      description: parsed.description
-    })
 
     // Enriquecer con IDs de categoría y cuenta
     let categoryId: number | undefined
@@ -266,67 +290,114 @@ COMANDO A ANALIZAR: "${transcription}"`
       // Si aún no hay match y es una transacción, usar categoría por defecto según tipo
       if (!category && parsed.transactionType) {
         const defaultCategories = dbCategories.filter(c => c.type === parsed.transactionType)
-        // Buscar "Otros Gastos" o "Otros Ingresos"
         category = defaultCategories.find(c => c.name.toLowerCase().includes('otros'))
-        
-        if (category) {
-          console.log(`[NLP Gemini] ⚠️ No se encontró "${parsed.categoryName}", usando categoría por defecto: ${category.name}`)
-        }
       }
       
       if (category) {
         categoryId = category.id
-        parsed.categoryName = category.name // Nombre exacto de DB
-      } else {
-        console.log(`[NLP Gemini] ❌ No se pudo mapear categoría: "${parsed.categoryName}"`)
-        console.log(`[NLP Gemini] 📋 Categorías disponibles:`, dbCategories.map(c => c.name))
+        parsed.categoryName = category.name
+      }
+    }
+
+    // Fallback para detectar cuenta si Gemini no la encontró
+    if (!parsed.accountName) {
+      const patterns = [
+        /\ben\s+([a-záéíóúñ\s]+?)(?:\s|$)/i,
+        /\bde\s+([a-záéíóúñ\s]+?)(?:\s|$)/i,
+        /\bcon\s+([a-záéíóúñ\s]+?)(?:\s|$)/i,
+        /\bdesde\s+([a-záéíóúñ\s]+?)(?:\s|$)/i,
+        /\busando\s+([a-záéíóúñ\s]+?)(?:\s|$)/i,
+      ]
+      
+      for (const pattern of patterns) {
+        const match = normalizedTranscription.match(pattern)
+        if (match && match[1]) {
+          const extractedName = match[1].trim().toLowerCase()
+          const matchedAccount = dbAccounts.find(a => {
+            const accountLower = a.name.toLowerCase()
+            return accountLower.includes(extractedName) || extractedName.includes(accountLower)
+          })
+          
+          if (matchedAccount) {
+            parsed.accountName = extractedName
+            break
+          }
+        }
       }
     }
 
     if (parsed.accountName) {
-      // Intentar match exacto primero
+      const normalizedInput = parsed.accountName.toLowerCase().trim()
+      
+      // Match exacto primero
       let account = dbAccounts.find(
-        a => a.name.toLowerCase() === parsed.accountName?.toLowerCase()
+        a => a.name.toLowerCase() === normalizedInput
       )
       
-      // Si no hay match exacto, intentar match parcial
+      // Match por inclusión bidireccional
       if (!account) {
-        account = dbAccounts.find(
-          a => a.name.toLowerCase().includes(parsed.accountName?.toLowerCase() || '') ||
-               parsed.accountName?.toLowerCase().includes(a.name.toLowerCase())
-        )
+        account = dbAccounts.find(a => {
+          const accountNameLower = a.name.toLowerCase()
+          return accountNameLower.includes(normalizedInput) || 
+                 normalizedInput.includes(accountNameLower)
+        })
       }
       
-      // Si aún no hay match, intentar buscar por palabras clave
+      // Match inteligente por palabras clave comunes en Colombia
       if (!account) {
-        const normalizedInput = parsed.accountName.toLowerCase()
-        
-        // Buscar "bancolombia", "banco colombia", etc.
-        if (normalizedInput.includes('banco') || normalizedInput.includes('colombia')) {
-          account = dbAccounts.find(a => a.name.toLowerCase().includes('banco'))
+        const keywordMappings: Record<string, string[]> = {
+          'bancolombia': ['banco', 'colombia', 'bancol'],
+          'davivienda': ['davi', 'vivienda'],
+          'bogota': ['banco de bogota', 'bogotá', 'bogota'],
+          'occidente': ['banco de occidente', 'occidente'],
+          'popular': ['banco popular', 'popular'],
+          'bbva': ['bbva'],
+          'itau': ['itaú', 'itau'],
+          'av villas': ['av villas', 'villas'],
+          'agrario': ['banco agrario', 'agrario'],
+          'caja social': ['caja', 'social', 'bcsc'],
+          'colpatria': ['colpatria', 'scotiabank'],
+          'pichincha': ['pichincha'],
+          'gnb sudameris': ['gnb', 'sudameris'],
+          'banco caja social': ['caja', 'social', 'bcsc'],
+          'efectivo': ['efectivo', 'cash', 'billetera'],
+          'ahorros': ['ahorros', 'ahorro'],
+          'corriente': ['corriente', 'cuenta corriente'],
+          'nequi': ['nequi'],
+          'daviplata': ['daviplata', 'davi'],
         }
         
-        // Buscar "caja social", "caja", "social"
-        if (!account && (normalizedInput.includes('caja') || normalizedInput.includes('social'))) {
-          account = dbAccounts.find(a => 
-            a.name.toLowerCase().includes('caja') || 
-            a.name.toLowerCase().includes('social')
+        for (const [key, patterns] of Object.entries(keywordMappings)) {
+          if (patterns.some(pattern => normalizedInput.includes(pattern))) {
+            account = dbAccounts.find(a => {
+              const accountLower = a.name.toLowerCase()
+              return patterns.some(p => accountLower.includes(p))
+            })
+            
+            if (account) break
+          }
+        }
+      }
+      
+      // 5. Match por palabras individuales (si el usuario dice parte del nombre)
+      if (!account) {
+        const inputWords = normalizedInput.split(/\s+/)
+        
+        account = dbAccounts.find(a => {
+          const accountWords = a.name.toLowerCase().split(/\s+/)
+          return inputWords.some(iw => 
+            accountWords.some(aw => aw.includes(iw) || iw.includes(aw))
           )
-        }
+        })
         
-        // Buscar "efectivo", "cash"
-        if (!account && (normalizedInput.includes('efectivo') || normalizedInput.includes('cash'))) {
-          account = dbAccounts.find(a => a.name.toLowerCase().includes('efectivo'))
+        if (account) {
+          console.log(`[NLP Gemini] ✅ Match por palabras: "${account.name}"`)
         }
       }
       
       if (account) {
         accountId = account.id
-        parsed.accountName = account.name // Nombre exacto de DB
-        console.log(`[NLP Gemini] ✅ Cuenta encontrada: "${parsed.accountName}" (ID: ${accountId})`)
-      } else {
-        console.log(`[NLP Gemini] ❌ No se pudo mapear cuenta: "${parsed.accountName}"`)
-        console.log(`[NLP Gemini] 📋 Cuentas disponibles:`, dbAccounts.map(a => a.name))
+        parsed.accountName = account.name
       }
     }
 

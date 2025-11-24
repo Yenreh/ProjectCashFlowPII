@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Mic } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { VoiceAssistant } from "./voice-assistant"
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden"
 
@@ -39,6 +39,9 @@ export function VoiceAssistantButton({ onTransactionCreated }: VoiceAssistantBut
         <DialogContent className="max-w-5xl p-0 gap-0 overflow-hidden">
           <VisuallyHidden>
             <DialogTitle>Asistente de Voz</DialogTitle>
+            <DialogDescription>
+              Usa tu voz para registrar transacciones, consultar información y navegar en la aplicación
+            </DialogDescription>
           </VisuallyHidden>
           <VoiceAssistant onTransactionCreated={handleTransactionCreated} />
         </DialogContent>
