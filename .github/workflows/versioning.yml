@@ -30,17 +30,17 @@ jobs:
         run: |
           VERSION=$(node -p "require('./version.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "📌 Version detected: $VERSION"
+          echo "Version detected: $VERSION"
 
       - name: Check if tag exists
         id: check_tag
         run: |
           if git rev-parse "v${{ steps.get_version.outputs.version }}" >/dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
-            echo "⚠️  Tag v${{ steps.get_version.outputs.version }} already exists, skipping..."
+            echo "Tag v${{ steps.get_version.outputs.version }} already exists, skipping..."
           else
             echo "exists=false" >> $GITHUB_OUTPUT
-            echo "✅ Tag v${{ steps.get_version.outputs.version }} does not exist, will create release"
+            echo "Tag v${{ steps.get_version.outputs.version }} does not exist, will create release"
           fi
 
       - name: Update package.json
@@ -58,7 +58,7 @@ jobs:
         if: steps.check_tag.outputs.exists == 'false'
         run: |
           if git diff --quiet package.json package-lock.json; then
-            echo "ℹ️  No changes in package.json, skipping commit"
+            echo "No changes in package.json, skipping commit"
           else
             git add package.json
             git add package-lock.json 2>/dev/null || true
@@ -71,7 +71,7 @@ jobs:
         run: |
           git tag -a "v${{ steps.get_version.outputs.version }}" -m "Release v${{ steps.get_version.outputs.version }}"
           git push origin "v${{ steps.get_version.outputs.version }}"
-          echo "✅ Created and pushed tag: v${{ steps.get_version.outputs.version }}"
+          echo "Created and pushed tag: v${{ steps.get_version.outputs.version }}"
 
       - name: Create GitHub Release
         if: steps.check_tag.outputs.exists == 'false'
@@ -80,18 +80,17 @@ jobs:
           tag_name: v${{ steps.get_version.outputs.version }}
           name: v${{ steps.get_version.outputs.version }}
           body: |
-            ## 🎉 Release v${{ steps.get_version.outputs.version }}
+            ## Release v${{ steps.get_version.outputs.version }}
             
-            ### 💰 Sistema de Gestión de Finanzas Personales
+            ### Sistema de Gestión de Finanzas Personales
             
-            #### ✨ Características
-            - 📊 Dashboard financiero con métricas en tiempo real
-            - 💳 Gestión de cuentas y transacciones
-            - 📸 Escaneo de recibos con OCR
-            - 🤖 Asistente financiero con IA
-            - 📈 Reportes y análisis de gastos/ingresos
-            - 🎯 Seguimiento de metas de ahorro
-            - 🗣️ Comandos de voz
+            #### Características
+            - Dashboard financiero con métricas en tiempo real
+            - Gestión de cuentas y transacciones
+            - Escaneo de recibos con OCR
+            - Asistente financiero con IA
+            - Reportes y análisis de gastos/ingresos
+            - Comandos de voz
             
             ---
             
