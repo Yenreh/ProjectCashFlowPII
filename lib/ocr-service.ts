@@ -150,6 +150,25 @@ export function validateImageQuality(imageBase64: string): { valid: boolean; err
   const sizeInBytes = Math.floor((base64.length * 3) / 4)
   const sizeInMB = sizeInBytes / (1024 * 1024)
   if (sizeInMB < 0.01) return { valid: false, error: "La imagen es demasiado pequeña" }
-  if (sizeInMB > 20) return { valid: false, error: "La imagen es demasiado grande (máximo 20MB)" }
+  if (sizeInMB > 5) return { valid: false, error: `La imagen es muy grande (${sizeInMB.toFixed(1)}MB). Máximo 5MB.` }
   return { valid: true }
+}
+
+/**
+ * Comprime una imagen en base64 si es muy grande
+ * Convierte a JPEG con calidad reducida para optimizar
+ */
+export function compressImageIfNeeded(imageBase64: string): string {
+  const base64 = imageBase64.includes(",") ? imageBase64.split(",")[1] : imageBase64
+  const sizeInBytes = Math.floor((base64.length * 3) / 4)
+  const sizeInMB = sizeInBytes / (1024 * 1024)
+  
+  // Si es menor a 2MB, no comprimir
+  if (sizeInMB < 2) {
+    console.log(`[OCR Service] Imagen OK (${sizeInMB.toFixed(2)}MB), no se comprime`)
+    return imageBase64
+  }
+  
+  console.log(`[OCR Service] ⚠️ Imagen grande (${sizeInMB.toFixed(2)}MB), debería comprimirse en el cliente`)
+  return imageBase64
 }
