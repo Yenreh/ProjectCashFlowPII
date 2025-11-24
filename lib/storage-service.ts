@@ -84,11 +84,21 @@ export async function saveReceiptImage(imageData: string): Promise<string> {
   } else {
     // Modo VERCEL_BLOB: Subir a Vercel Blob
     const filename = `receipts/${hash}.${extension}`
-    const blob = await put(filename, buffer, {
-      access: "public",
-      contentType: mimeType,
-    })
-    console.log(`[Storage] ✅ Imagen guardada (blob): ${blob.url}`)
+    
+    // Verificar si ya existe
+    try {
+      const existing = await head(filename)
+      console.log(`[Storage] ℹ️ Imagen ya existe (blob): ${existing.url}`)
+      return hash
+    } catch {
+      // No existe, proceder a subir
+      const blob = await put(filename, buffer, {
+        access: "public",
+        contentType: mimeType,
+        addRandomSuffix: false, // Usamos el hash como nombre único
+      })
+      console.log(`[Storage] ✅ Imagen guardada (blob): ${blob.url}`)
+    }
   }
 
   return hash
