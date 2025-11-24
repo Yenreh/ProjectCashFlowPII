@@ -113,12 +113,13 @@ export async function getReceiptImageUrl(hash: string): Promise<string | null> {
   const extensions = ["jpg", "png"]
   
   if (STORAGE_MODE === "local") {
-    // Modo LOCAL: Retornar ruta relativa
+    // Modo LOCAL: Retornar ruta API protegida
     for (const ext of extensions) {
       const filepath = path.join(RECEIPTS_DIR, `${hash}.${ext}`)
       try {
         await fs.access(filepath)
-        return `/media/receipts/${hash}.${ext}`
+        // Usar la ruta API protegida en lugar de acceso directo a /media
+        return `/api/receipts/image/${hash}`
       } catch {
         continue
       }
@@ -228,7 +229,7 @@ export async function getReceiptImageInfo(hash: string): Promise<{
         return {
           exists: true,
           path: filepath,
-          url: `/media/receipts/${hash}.${ext}`,
+          url: `/api/receipts/image/${hash}`,
           size: stats.size,
           extension: ext,
         }

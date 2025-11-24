@@ -1,0 +1,106 @@
+name: Create Release from Version
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'version.json'
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Get version from version.json
+        id: get_version
+        run: |
+          VERSION=$(node -p "require('./version.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📌 Version detected: $VERSION"
+
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          if git rev-parse "v${{ steps.get_version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "⚠️  Tag v${{ steps.get_version.outputs.version }} already exists, skipping..."
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "✅ Tag v${{ steps.get_version.outputs.version }} does not exist, will create release"
+          fi
+
+      - name: Update package.json
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          npm version ${{ steps.get_version.outputs.version }} --no-git-tag-version --allow-same-version
+
+      - name: Configure Git
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit package.json changes
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          if git diff --quiet package.json package-lock.json; then
+            echo "ℹ️  No changes in package.json, skipping commit"
+          else
+            git add package.json
+            git add package-lock.json 2>/dev/null || true
+            git commit -m "chore: sync package.json to v${{ steps.get_version.outputs.version }} [skip ci]"
+            git push origin main
+          fi
+
+      - name: Create Git tag
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          git tag -a "v${{ steps.get_version.outputs.version }}" -m "Release v${{ steps.get_version.outputs.version }}"
+          git push origin "v${{ steps.get_version.outputs.version }}"
+          echo "✅ Created and pushed tag: v${{ steps.get_version.outputs.version }}"
+
+      - name: Create GitHub Release
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.get_version.outputs.version }}
+          name: v${{ steps.get_version.outputs.version }}
+          body: |
+            ## 🎉 Release v${{ steps.get_version.outputs.version }}
+            
+            ### 💰 Sistema de Gestión de Finanzas Personales
+            
+            #### ✨ Características
+            - 📊 Dashboard financiero con métricas en tiempo real
+            - 💳 Gestión de cuentas y transacciones
+            - 📸 Escaneo de recibos con OCR
+            - 🤖 Asistente financiero con IA
+            - 📈 Reportes y análisis de gastos/ingresos
+            - 🎯 Seguimiento de metas de ahorro
+            - 🗣️ Comandos de voz
+            
+            ---
+            
+            ### 📝 Cambios en esta versión
+            Consulta el historial de commits para ver los cambios detallados.
+            
+            ---
+            
+            *Esta release se creó automáticamente al actualizar version.json*
+          draft: false
+          prerelease: false
+          generate_release_notes: true

@@ -8,8 +8,10 @@ export const config = {
      * - /login (página de login)
      * - /registro (página de registro)
      * - /_next/* (archivos estáticos de Next.js)
-     * - /favicon.ico, /media/* (archivos públicos)
+     * - /favicon.svg (favicon público)
+     * NOTA: /media/* NO está excluido para proteger los recibos en /media/receipts
+     * Los recibos se sirven a través de /api/receipts/[id]/image con autenticación
      */
-    "/((?!api/auth|login|registro|_next|favicon.ico|media).*)",
+    "/((?!api/auth|login|registro|_next|favicon.svg).*)",
   ],
 }
