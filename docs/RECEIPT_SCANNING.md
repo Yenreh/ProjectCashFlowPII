@@ -1,319 +1,306 @@
-# Módulo de Escaneo de Recibos (OCR)
+# Módulo de Escaneo de Recibos (OCR) - CashFlow
 
 ## Descripción
 
-Este módulo implementa la funcionalidad de escanear y extraer información de recibos y facturas usando inteligencia artificial (GPT-4 Vision). Permite a los usuarios tomar fotos de sus recibos y automáticamente extraer el monto, comercio, fecha y categoría.
+Escaneo automático de recibos y facturas usando GPT-4 Vision (OCR con IA). Extrae monto, comercio, fecha y categoría de fotos de recibos, con almacenamiento eficiente mediante hash SHA-256.
 
 ## Características
 
-- **OCR con IA**: Usa GPT-4o-mini para extracción precisa de datos
-- **Almacenamiento eficiente**: Imágenes guardadas con hash SHA-256 (deduplicación automática)
+- **OCR con IA**: GPT-4o-mini para extracción precisa
+- **Deduplicación**: Hash SHA-256 evita duplicados
 - **Validación de calidad**: Detecta imágenes borrosas o ilegibles
 - **Mapeo inteligente**: Asocia automáticamente con categorías existentes
-- **Nivel de confianza**: Indica qué tan precisa es la extracción
+- **Confidence score**: Nivel de confianza de la extracción (0.0-1.0)
+- **Almacenamiento seguro**: Vercel Blob (producción) o local (desarrollo)
+- **Protección de acceso**: Middleware + API autenticada con validación de ownership
 
 ## Arquitectura
 
 ### Flujo de Datos
 
 ```
-Usuario toma foto → POST /api/receipts/scan
-                    ↓
-            Validación de imagen
-                    ↓
-            Guardar en /media/receipts/{hash}.jpg
-                    ↓
-            Procesar con GPT-4 Vision
-                    ↓
-            Extraer datos estructurados
-                    ↓
-            Mapear a categorías existentes
-                    ↓
-            Retornar JSON con datos + hash
+1. Usuario toma foto
+   ↓
+2. POST /api/receipts/scan
+   ↓
+3. Validación imagen (tamaño, formato, calidad)
+   ↓
+4. Generar hash SHA-256 (deduplicación)
+   ↓
+5. Guardar en storage:
+   - Vercel Blob (producción): put(blob, metadata)
+   - Local (dev): /media/receipts/{hash}.jpg
+   ↓
+6. OCR con GPT-4 Vision
+   ↓
+7. Extraer datos estructurados:
+   {
+     amount: number,
+     merchant: string,
+     date: string,
+     category: string,
+     confidence: 0.0-1.0
+   }
+   ↓
+8. Mapear a categorías existentes
+   ↓
+9. Response con datos + image_hash
+   ↓
+10. Frontend usa image_hash para:
+    - GET /api/receipts/image/[hash] (protegido)
+```
+
+### Seguridad
+
+**Protección de imágenes**:
+```
+middleware.ts
+  ↓ Bloquea /media/* (no excluye)
+  
+/api/receipts/image/[hash]
+  ↓ Validar sesión (NextAuth)
+  ↓ Verificar ownership (user_id match)
+  ↓ Servir imagen:
+    - Vercel Blob: fetch interno + pipe
+    - Local: readFile + stream
+```
+
+**Storage Service** (`lib/storage-service.ts`):
+```typescript
+// URLs protegidas
+return `/api/receipts/image/${hash}`;
+// NO exponer /media directamente
+```
+
+## API
+
+### POST /api/receipts/scan
+
+**Request**:
+```typescript
+// FormData
+{
+  file: File,  // JPG, PNG o PDF
+  userId: string
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "amount": 25000,
+    "merchant": "Supermercado XYZ",
+    "date": "2025-01-15",
+    "category": "Comida",
+    "confidence": 0.92,
+    "image_hash": "a3f4b2c1d5e..."
+  }
+}
+```
+
+**Errores**:
+```json
+// Imagen borrosa
+{
+  "success": false,
+  "error": "Imagen ilegible o de baja calidad"
+}
+
+// Formato inválido
+{
+  "success": false,
+  "error": "Formato no soportado. Use JPG, PNG o PDF"
+}
+```
+
+### GET /api/receipts/image/[hash]
+
+**Auth**: Requiere sesión NextAuth
+
+**Validación**:
+1. Verificar sesión activa
+2. Buscar transacciones del usuario con `image_hash`
+3. Si no hay match → 404
+
+**Response**:
+- `Content-Type: image/jpeg`
+- Stream de imagen
+
+## Configuración
+
+### Variables de Entorno
+
+```bash
+# OpenAI (OCR)
+OPENAI_API_KEY=sk-...
+
+# Storage mode
+STORAGE_MODE=vercel_blob  # o "local"
+
+# Vercel Blob (solo producción)
+BLOB_READ_WRITE_TOKEN=vercel_blob_...
 ```
 
 ### Estructura de Archivos
 
 ```
 lib/
-├── receipt-types.ts       # Tipos TypeScript para recibos
-├── ocr-service.ts         # Servicio de OCR con OpenAI
-├── storage-service.ts     # Gestión de almacenamiento de imágenes
-└── types.ts               # Tipos extendidos (Transaction)
+├── receipt-types.ts       # Tipos: ReceiptData, OCRResult
+├── ocr-service.ts         # scanReceipt(image) → ReceiptData
+├── storage-service.ts     # saveImage(), getImageUrl()
+└── types.ts               # Transaction con image_hash
 
 app/api/receipts/
-├── scan/route.ts          # POST - Escanear recibo
-└── image/[hash]/route.ts  # GET - Obtener imagen por hash
+├── scan/route.ts          # POST - Escanear
+└── image/[hash]/route.ts  # GET - Servir (protegido)
 
-public/media/receipts/     # Directorio de imágenes
+public/media/receipts/     # Solo en desarrollo
 ├── .gitkeep
-└── {hash}.jpg             # Imágenes guardadas
-
-scripts/
-└── 04-add-receipt-support.sql  # Migración de BD
+└── {hash}.jpg
 ```
 
-## Base de Datos
+## Uso en Frontend
 
-### Campos Agregados a `transactions`
+### Componente Scanner
 
-| Campo | Tipo | Descripción |
-|-------|------|-------------|
-| `source` | `VARCHAR(10)` | Fuente: 'manual', 'voice', 'image' |
-| `image_hash` | `VARCHAR(64)` | Hash SHA-256 de la imagen |
-| `merchant` | `VARCHAR(255)` | Nombre del comercio |
-| `ocr_confidence` | `NUMERIC(3,2)` | Nivel de confianza (0-1) |
-| `edited` | `BOOLEAN` | Si fue editado después del escaneo |
+```tsx
+// components/receipts/receipt-scanner.tsx
+"use client";
 
-## API Endpoints
+import { scanReceipt } from '@/lib/ocr-service';
 
-### POST /api/receipts/scan
-
-Escanea un recibo y extrae información estructurada.
-
-**Request:**
-```json
-{
-  "image": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAA..."
-}
-```
-
-**Response Success (200):**
-```json
-{
-  "success": true,
-  "message": "Recibo procesado correctamente",
-  "data": {
-    "merchant": "Éxito",
-    "amount": 45000,
-    "currency": "COP",
-    "date": "2025-11-23",
-    "categoryName": "Alimentación",
-    "categoryId": 1,
-    "confidence": 0.87,
-    "imageHash": "a1b2c3d4e5f6...",
-    "needsRetry": false,
-    "llmMetadata": {
-      "model": "gpt-4o-mini",
-      "latencyMs": 2300
-    }
-  }
-}
-```
-
-**Response Error - Baja Calidad (422):**
-```json
-{
-  "success": false,
-  "error": "IMAGE_QUALITY_TOO_LOW",
-  "message": "La imagen es muy borrosa. Por favor, toma otra foto."
-}
-```
-
-### GET /api/receipts/image/[hash]
-
-Obtiene la imagen de un recibo por su hash.
-
-**Response:**
-- Imagen JPEG o PNG
-- Headers: `Cache-Control: public, max-age=31536000, immutable`
-
-## Configuración
-
-### Variables de Entorno
-
-Agrega a tu archivo `.env`:
-
-```bash
-# Requerido para escaneo de recibos
-OPENAI_API_KEY="sk-..."
-```
-
-### Migración de Base de Datos
-
-Ejecuta el script de migración:
-
-```bash
-# Opción 1: psql
-psql $DATABASE_URL -f scripts/04-add-receipt-support.sql
-
-# Opción 2: Node.js
-node scripts/run-migration.js
-```
-
-## Uso
-
-### Desde el Frontend
-
-```typescript
-// 1. Capturar imagen (con input file o cámara)
-const file = event.target.files[0]
-const reader = new FileReader()
-
-reader.onload = async () => {
-  const imageBase64 = reader.result as string
-  
-  // 2. Enviar al endpoint
-  const response = await fetch('/api/receipts/scan', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image: imageBase64 })
-  })
-  
-  const result = await response.json()
-  
-  if (result.success) {
-    const { merchant, amount, categoryId, imageHash } = result.data
+export function ReceiptScanner() {
+  const handleScan = async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('userId', session.user.id);
     
-    // 3. Mostrar datos extraídos para validación del usuario
-    // 4. Crear transacción con los datos confirmados
-    await fetch('/api/transactions', {
+    const response = await fetch('/api/receipts/scan', {
       method: 'POST',
-      body: JSON.stringify({
-        account_id: selectedAccountId,
-        category_id: categoryId,
-        type: 'gasto',
-        amount: amount,
-        description: merchant,
-        date: result.data.date,
-        source: 'image',
-        image_hash: imageHash,
-        merchant: merchant,
-        ocr_confidence: result.data.confidence,
-        edited: false
-      })
-    })
-  }
+      body: formData
+    });
+    
+    const { data } = await response.json();
+    
+    // Usar data.image_hash para mostrar imagen
+    // GET /api/receipts/image/{data.image_hash}
+  };
+  
+  return (
+    <input 
+      type="file" 
+      accept="image/*,application/pdf"
+      onChange={(e) => handleScan(e.target.files[0])} 
+    />
+  );
 }
-
-reader.readAsDataURL(file)
 ```
 
 ### Mostrar Imagen de Recibo
 
 ```tsx
-// Componente React
-function ReceiptImage({ imageHash }: { imageHash: string }) {
-  return (
-    <img 
-      src={`/api/receipts/image/${imageHash}`}
-      alt="Recibo"
-      className="w-full rounded-lg"
-    />
-  )
-}
+// components/transactions/transaction-item.tsx
+import Image from 'next/image';
 
-// O usar la ruta estática directa
-<img src={`/media/receipts/${imageHash}.jpg`} alt="Recibo" />
+{transaction.image_hash && (
+  <Image 
+    src={`/api/receipts/image/${transaction.image_hash}`}
+    alt="Recibo"
+    width={200}
+    height={200}
+    className="rounded"
+  />
+)}
 ```
 
-## Almacenamiento
-
-### Sistema de Hash
-
-Las imágenes se guardan usando SHA-256:
-- **Ventaja**: Deduplicación automática (misma imagen = mismo hash)
-- **Seguridad**: No expone información sensible en el nombre
-- **Eficiencia**: Búsqueda rápida por hash
-
-### Estructura de Archivos
-
-```
-public/media/receipts/
-├── .gitkeep
-├── a1b2c3d4e5f6789012345678901234567890abcdef.jpg
-├── b2c3d4e5f6789012345678901234567890abcdef12.jpg
-└── c3d4e5f6789012345678901234567890abcdef1234.jpg
-```
-
-### Gestión de Espacio
-
-Para limpiar imágenes antiguas o huérfanas:
+## Formato de Prompt OCR
 
 ```typescript
-import { deleteReceiptImage } from '@/lib/storage-service'
+// ocr-service.ts
+const prompt = `Analiza este recibo y extrae:
+1. Monto total (número)
+2. Nombre del comercio
+3. Fecha (YYYY-MM-DD)
+4. Categoría sugerida (una de: ${categories.join(', ')})
+5. Nivel de confianza (0.0-1.0)
 
-// Eliminar imagen específica
-await deleteReceiptImage('hash-de-la-imagen')
-
-// Script de limpieza (crear en scripts/)
-// Elimina imágenes sin transacciones asociadas
+Responde en JSON:
+{
+  "amount": number,
+  "merchant": string,
+  "date": "YYYY-MM-DD",
+  "category": string,
+  "confidence": number
+}`;
 ```
 
-## Seguridad
+## Validaciones
 
-### Validaciones
+### Pre-upload
+- Tamaño máximo: 10MB
+- Formatos: JPG, PNG, PDF
+- Dimensiones mínimas: 200x200px
 
-1. **Formato**: Solo imágenes base64 válidas
-2. **Tamaño**: Máximo 20MB
-3. **Tipo**: JPEG, PNG
-4. **API Key**: No expuesta al cliente (solo en servidor)
-
-### Mejores Prácticas
-
-- Las imágenes están en `/public` pero con nombres hash (no predecibles)
-- El hash no es reversible (no se puede obtener la imagen original)
-- Se puede agregar autenticación a `/api/receipts/image/[hash]`
-
-## Costos
-
-### OpenAI GPT-4o-mini
-
-- **Modelo**: gpt-4o-mini (económico)
-- **Costo**: ~$0.00015 USD por imagen
-- **Tokens**: ~1000 tokens por request
-- **Latencia**: 2-5 segundos
-
-### Optimizaciones
-
-- Usar `detail: "high"` solo cuando sea necesario
-- Cachear resultados si el hash ya fue procesado
-- Implementar límite de rate para evitar abuso
+### Post-OCR
+- `confidence < 0.5` → Solicitar re-escaneo
+- `amount <= 0` → Rechazar
+- `date` inválida → Usar fecha actual
+- `category` no existe → Mapear a "Otros"
 
 ## Troubleshooting
 
-### Error: "OPENAI_API_KEY no configurada"
-
-Solución: Agrega la API key en `.env`:
+**Error: "Imagen borrosa"**
 ```bash
-OPENAI_API_KEY="sk-..."
+# Ajustar threshold de confianza en ocr-service.ts
+const MIN_CONFIDENCE = 0.5; // Bajar a 0.3 si es muy estricto
 ```
 
-### Error: "IMAGE_QUALITY_TOO_LOW"
+**Error: "OPENAI_API_KEY no definida"**
+```bash
+# Verificar .env.local
+echo $OPENAI_API_KEY
+```
 
-Causas:
-- Imagen borrosa
-- Luz inadecuada
-- Recibo arrugado
+**Error: "Imagen no se muestra"**
+```bash
+# Verificar que middleware NO excluya /media
+# Verificar que API route valida sesión
+# Verificar ownership en transacciones table
+```
 
-Solución: Pedir al usuario tomar otra foto
+**Error: "Categoría incorrecta"**
+```typescript
+// Mejorar mapeo en ocr-service.ts
+const categoryMapping = {
+  "supermercado": "Comida",
+  "restaurant": "Comida",
+  "uber": "Transporte",
+  // ...
+};
+```
 
-### Error: "No se encontró categoría"
+## Mejoras Futuras
 
-El modelo sugiere una categoría que no existe en la BD.
+**Prioridad Alta**:
+- Tests unitarios para OCR service (pendiente)
+- Retry automático en fallos de extracción (pendiente)
+- Preview de imagen antes de confirmar (pendiente)
 
-Solución:
-1. Agregar más categorías en `02-seed-categories.sql`
-2. Mejorar el mapeo en `ocr-service.ts`
-3. Usar categoría por defecto ("Otros Gastos")
+**Prioridad Media**:
+- Soporte para múltiples recibos en una imagen (pendiente)
+- Extracción de items individuales (pendiente)
+- Detección de duplicados por contenido (no solo hash) (pendiente)
 
-## Próximas Mejoras
+**Prioridad Baja**:
+- OCR offline con Tesseract.js (pendiente)
+- Entrenamiento de modelo custom para recibos locales (pendiente)
+- Exportar recibos como PDF (pendiente)
 
-- [ ] Soporte para múltiples recibos en una foto
-- [ ] Extracción de items individuales (no solo total)
-- [ ] OCR offline con Tesseract (fallback)
-- [ ] Compresión de imágenes automática
-- [ ] Detección de duplicados por contenido (no solo hash)
-- [ ] Soporte para recibos en otros idiomas
-- [ ] Exportación de recibos a PDF
-
-## Referencias
+## Recursos
 
 - [OpenAI Vision API](https://platform.openai.com/docs/guides/vision)
-- [GPT-4o-mini Pricing](https://openai.com/pricing)
-- [SHA-256 Hash](https://en.wikipedia.org/wiki/SHA-2)
-
----
-
-**Implementado**: Noviembre 2025
-**Versión**: 1.0.0
+- [Vercel Blob Docs](https://vercel.com/docs/storage/vercel-blob)
+- [Storage Service](../lib/storage-service.ts)
+- [OCR Service](../lib/ocr-service.ts)

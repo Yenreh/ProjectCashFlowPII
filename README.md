@@ -1,11 +1,11 @@
-# Finanzas Personales
+# CashFlow
 
 [![Build Status](https://github.com/ManuhCardoso1501/FinanzasPersonales-PyI-II/actions/workflows/ci.yml/badge.svg)](https://github.com/ManuhCardoso1501/FinanzasPersonales-PyI-II/actions/workflows/ci.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-14.x-black.svg)](https://nextjs.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Aplicación web moderna para gestionar finanzas personales de manera simple y efectiva. Sistema multiusuario completo con autenticación, control de ingresos, gastos, cuentas bancarias y reportes visuales de tu situación financiera.
+Aplicación web moderna para gestionar tus finanzas personales de manera simple y efectiva. Sistema multiusuario completo con autenticación, control de ingresos, gastos, cuentas bancarias y reportes visuales.
 
 ## Características Principales
 
@@ -81,11 +81,9 @@ STORAGE_MODE="local"  # Usa "local" en desarrollo, "vercel_blob" en producción
 **Obtener API Keys:**
 - Gemini: [Google AI Studio](https://aistudio.google.com/app/apikey)
 - ElevenLabs: [elevenlabs.io](https://elevenlabs.io/)
-- NextAuth Secret: Genera con `openssl rand -base64 32` o [generate-secret.vercel.app/32](https://generate-secret.vercel.app/32)
+- NextAuth Secret: Genera con `openssl rand -base64 32`
 
 ### 4. Configurar base de datos
-
-**Opción 1: Script completo (recomendado)**
 
 ```bash
 # Ejecuta el script completo que crea todas las tablas y categorías
@@ -139,7 +137,6 @@ Visualiza:
    - "gasté 50000 pesos en comida"
    - "recibí 1000000 de salario"
    - "pagué 80000 en transporte"
-   - "invertí 500000 en educación"
 3. Confirma o edita la transacción detectada
 4. La transacción se registra automáticamente
 
@@ -157,12 +154,8 @@ Visualiza:
 1. Ve a "Transacciones"
 2. Click en "Escanear Recibo" (ícono de cámara)
 3. Toma una foto clara del recibo
-4. El sistema extrae automáticamente:
-   - Monto total
-   - Fecha de compra
-   - Comercio/establecimiento
-   - Categoría sugerida
-5. Valida y ajusta la información si es necesario
+4. El sistema extrae automáticamente: monto, fecha, comercio, categoría
+5. Valida y ajusta la información
 6. Confirma para registrar la transacción
 
 **Nota sobre almacenamiento:**
@@ -175,40 +168,15 @@ Visualiza:
 1. Ve a "Transacciones"
 2. Click en "Nueva Transacción"
 3. Selecciona tipo (Ingreso/Gasto)
-4. Completa el formulario:
-   - Monto
-   - Categoría (con buscador)
-   - Cuenta
-   - Fecha
-   - Descripción (opcional)
+4. Completa el formulario: monto, categoría, cuenta, fecha, descripción
 5. Guarda la transacción
-
-### Dashboard
-
-Visualiza:
-- Balance total de cuentas
-- Ingresos y gastos del período
-- Transacciones recientes
-- Análisis de salud financiera con IA
 
 ### Reportes
 
 Analiza tus finanzas:
 - **Gastos por categoría**: Gráfico circular con distribución
 - **Ingresos por categoría**: Desglose de fuentes de ingreso
-- **Porcentajes**: Ve qué porcentaje representa cada categoría
-- **Filtros avanzados**: 
-  - Por rango de fechas
-  - Por cuenta específica
-  - Exporta datos (próximamente)
-
-### Tips de Uso
-
-- **Búsqueda rápida**: Usa el buscador de categorías para encontrar rápidamente
-- **Scroll suave**: El selector de categorías ahora tiene scroll mejorado
-- **Atajos de teclado**: Navega categorías con flechas arriba/abajo
-- **Validación inteligente**: El sistema valida montos y fechas automáticamente
-- **Categorías personalizadas**: Crea tus propias categorías además de las globales
+- **Filtros avanzados**: Por rango de fechas, por cuenta específica
 
 ## Despliegue en Vercel
 
@@ -223,7 +191,7 @@ Analiza tus finanzas:
    - `GEMINI_API_KEY`
    - `ELEVEN_LABS_API_KEY`
    - `NEXTAUTH_SECRET` (genera con `openssl rand -base64 32`)
-   - `STORAGE_MODE=vercel_blob` (para usar Blob Storage)
+   - `STORAGE_MODE=vercel_blob`
    - **Nota**: `NEXTAUTH_URL` NO es necesaria en Vercel (se detecta automáticamente)
 4. Deploy automático con cada push a main
 
@@ -244,7 +212,6 @@ vercel env add DATABASE_URL
 vercel env add GEMINI_API_KEY
 vercel env add NEXTAUTH_SECRET
 vercel env add STORAGE_MODE
-# No agregues NEXTAUTH_URL - Vercel lo maneja automáticamente
 ```
 
 ### Configuración de Blob Storage
@@ -261,19 +228,6 @@ Para que el escaneo de recibos funcione en Vercel:
    # Valor: vercel_blob
    ```
 
-3. **Para desarrollo local** (opcional):
-   - Puedes obtener un token de desarrollo en vercel.com/dashboard/stores
-   - O simplemente usa `STORAGE_MODE=local` para guardar en disco
-
-### Recomendaciones de Producción
-
-- Usa [Neon](https://neon.tech/) para PostgreSQL serverless (gratis hasta 3GB)
-- Habilita **Vercel Blob Storage** para imágenes de recibos (gratis hasta 100GB transferencia/mes)
-- Configura límites de rate en las APIs de voz y chat
-- Habilita HTTPS (Vercel lo hace automáticamente)
-- Monitorea uso de APIs (Gemini tiene límites gratuitos generosos)
-- Vercel detecta automáticamente la URL de producción para NextAuth
-
 ## Scripts
 
 ```bash
@@ -289,11 +243,7 @@ npm run type-check   # Verificar tipos TypeScript
 ### Base de Datos
 
 - **PostgreSQL 14+** con queries parametrizadas para seguridad
-- **Tablas principales**:
-  - `users`: Usuarios del sistema
-  - `categories`: Categorías globales y personalizadas
-  - `accounts`: Cuentas bancarias por usuario
-  - `transactions`: Registro de ingresos/gastos
+- **Tablas principales**: users, categories, accounts, transactions
 - **Seguridad**: Todas las queries usan parámetros seguros (prevención SQL injection)
 - **Multiusuario**: Aislamiento completo de datos por usuario
 
@@ -335,13 +285,6 @@ Si obtienes errores de "read-only file system" en Vercel:
 
 Para desarrollo local, usa `STORAGE_MODE=local` en tu `.env.local`
 
-### Problemas con el scroll del selector de categorías
-
-El scroll con mouse wheel está optimizado. Si no funciona:
-- Usa la barra de scroll lateral
-- Navega con teclado (flechas arriba/abajo)
-- Usa la búsqueda para filtrar categorías
-
 ## Contribuir
 
 Ver [CONTRIBUTING.md](docs/CONTRIBUTING.md) para guías de contribución.
@@ -353,6 +296,8 @@ Ver [CONTRIBUTING.md](docs/CONTRIBUTING.md) para guías de contribución.
 - [Testing](docs/TESTING.md)
 - [Deployment](docs/DEPLOYMENT.md)
 - [Escaneo de Recibos](docs/RECEIPT_SCANNING.md)
+- [Versionado](docs/VERSIONING.md)
+- [Changelog](docs/CHANGELOG.md)
 
 ## Estructura del Proyecto
 
@@ -360,64 +305,27 @@ Ver [CONTRIBUTING.md](docs/CONTRIBUTING.md) para guías de contribución.
 FinanzasPersonales-PyI-II/
 ├── app/                    # Next.js App Router
 │   ├── api/               # API Routes
-│   │   ├── auth/          # Autenticación (registro, login, NextAuth)
+│   │   ├── auth/          # Autenticación
 │   │   ├── accounts/      # CRUD de cuentas
 │   │   ├── transactions/  # CRUD de transacciones
 │   │   ├── categories/    # Gestión de categorías
-│   │   ├── voice/         # Asistente de voz (STT + NLP)
-│   │   ├── chat/          # Chat financiero con IA
-│   │   ├── receipts/      # Escaneo OCR de recibos
-│   │   ├── dashboard/     # Métricas y análisis IA
-│   │   ├── reports/       # Reportes por categoría
+│   │   ├── voice/         # Asistente de voz
+│   │   ├── chat/          # Chat financiero
+│   │   ├── receipts/      # Escaneo OCR
+│   │   ├── dashboard/     # Métricas
+│   │   ├── reports/       # Reportes
 │   │   └── savings/       # Insights de ahorro
-│   ├── cuentas/           # Página de gestión de cuentas
+│   ├── cuentas/           # Página de cuentas
 │   ├── transacciones/     # Página de transacciones
-│   ├── reportes/          # Página de reportes visuales
+│   ├── reportes/          # Página de reportes
 │   ├── registro/          # Página de registro
-│   ├── login/             # Página de inicio de sesión
+│   ├── login/             # Página de login
 │   └── page.tsx           # Dashboard principal
 ├── components/            # Componentes React
-│   ├── auth/              # Componentes de autenticación
-│   ├── voice/             # Asistente de voz
-│   ├── chat/              # Chat financiero
-│   ├── receipts/          # Escaneo de recibos
-│   ├── transactions/      # Gestión de transacciones
-│   ├── accounts/          # Gestión de cuentas
-│   ├── categories/        # Selector de categorías
-│   ├── dashboard/         # Widgets del dashboard
-│   ├── reports/           # Gráficos y reportes
-│   ├── savings/           # Panel de insights de ahorro
-│   ├── layout/            # Navegación y layout
-│   └── ui/                # Componentes base (Shadcn)
 ├── lib/                   # Lógica de negocio
-│   ├── db.ts              # Queries SQL con Neon
-│   ├── auth.ts            # Configuración NextAuth
-│   ├── auth-helpers.ts    # Utilidades de autenticación
-│   ├── auth-types.ts      # Tipos de autenticación
-│   ├── nlp-gemini-service.ts  # NLP con Gemini
-│   ├── nlp-service.ts     # Servicio de procesamiento NLP
-│   ├── ocr-service.ts     # OCR de recibos
-│   ├── chat-service.ts    # Chat con contexto financiero
-│   ├── financial-ai-analyzer.ts  # Análisis de salud
-│   ├── savings-analyzer.ts       # Análisis de ahorros
-│   ├── balance-utils.ts   # Cálculo de balances
-│   ├── health-cache.ts    # Cache de métricas
-│   ├── storage-service.ts # Almacenamiento de recibos
-│   ├── format.ts          # Formateo de números/fechas
-│   ├── types.ts           # Tipos TypeScript principales
-│   ├── voice-types.ts     # Tipos para asistente de voz
-│   ├── chat-types.ts      # Tipos para chat
-│   ├── receipt-types.ts   # Tipos para recibos
-│   ├── hooks/             # React Hooks personalizados
-│   ├── stores/            # Estado global (Zustand)
-│   ├── contexts/          # React Contexts
-│   └── __tests__/         # Tests unitarios
 ├── scripts/               # Scripts de base de datos
-│   └──  00-setup-database-complete.sql  # Setup completo
 ├── docs/                  # Documentación técnica
 ├── public/                # Archivos estáticos
-│   └── media/
-│       └── receipts/      # Almacenamiento de recibos
 └── middleware.ts          # Middleware de autenticación
 ```
 

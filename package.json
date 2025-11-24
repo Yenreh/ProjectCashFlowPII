@@ -6,7 +6,9 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "next lint",
-    "start": "next start"
+    "start": "next start",
+    "test": "npx tsx tests/run-all.ts",
+    "test:db": "npx tsx tests/test-connection.ts"
   },
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.20.1",

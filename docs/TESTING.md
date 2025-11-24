@@ -1,653 +1,473 @@
-# 🧪 Guía de Pruebas - Finanzas Personales
+# Guía de Pruebas - CashFlow
 
-Esta guía documenta todas las pruebas implementadas en el proyecto, incluyendo pruebas manuales, automatizadas, y estrategias de testing.
+## Tests Disponibles
 
-## 📋 Índice
-
-- [Testing del Asistente de Voz](#testing-del-asistente-de-voz)
-- [Testing de NLP Service](#testing-de-nlp-service)
-- [Testing de Integración](#testing-de-integración)
-- [Testing Manual](#testing-manual)
-- [CI/CD Pipeline](#cicd-pipeline)
-- [Testing de Base de Datos](#testing-de-base-de-datos)
-
----
-
-## 🎤 Testing del Asistente de Voz
-
-### Pruebas Funcionales
-
-#### 1. Transcripción de Voz
-**Objetivo**: Verificar que Web Speech API transcribe correctamente
-
-**Casos de Prueba**:
-```javascript
-// Caso 1: Comando simple de gasto
-Input: "gasté 50000 en comida"
-Expected: Transcripción exacta del comando
-
-// Caso 2: Comando de ingreso
-Input: "recibí 1000000 de salario"
-Expected: Transcripción exacta del comando
-
-// Caso 3: Comando con números complejos
-Input: "pagué ochenta mil pesos en transporte"
-Expected: Transcripción puede variar (80000 o "ochenta mil")
+### Suite Completa
+```bash
+npm test
 ```
 
-#### 2. Procesamiento de Comandos
-**Objetivo**: Validar que el NLP service procesa correctamente
+Ejecuta 7 suites de tests automáticamente (86+ tests unitarios):
+- Conexión a base de datos
+- Servicio NLP (comandos de voz)
+- Balance Utils (cálculos financieros)
+- Format Utils (formateo moneda/fechas)
+- OCR Utils (parsing de recibos)
+- Savings Analyzer (análisis de ahorro)
+- Chat Utils (utilidades de contexto)
 
-**Pruebas Automatizadas** (ejecutar con `npx tsx lib/__tests__/nlp-service.test.ts`):
+### Test Individual de Base de Datos
+```bash
+npm run test:db
+```
 
-✅ **37 tests pasando**:
+Verifica conectividad a PostgreSQL (Neon) y tablas existentes.
+
+## Estructura de Tests
+
+```
+tests/
+├── run-all.ts                    # Orquestador principal
+├── test-connection.ts            # Conexión BD (READ-ONLY)
+├── nlp-service.test.ts           # Comandos de voz (17 tests)
+├── balance-utils.test.ts         # Cálculos balance (18 tests)
+├── format.test.ts                # Formateo (8 tests)
+├── ocr-utils.test.ts             # Parsing recibos (15 tests)
+├── savings-analyzer.test.ts      # Análisis ahorro (13 tests)
+└── chat-utils.test.ts            # Context financiero (15 tests)
+```
+
+## Cobertura por Componente
+
+### 1. Conexión a Base de Datos (test-connection.ts)
+**Qué verifica**:
+- Conectividad a PostgreSQL
+- Variables de entorno correctas
+- Existencia de tablas (usuarios, categories, accounts, transactions)
+- Conteo de registros
+
+**IMPORTANTE**: Solo ejecuta SELECT (consultas de lectura), no modifica datos.
+
+### 2. Servicio NLP (nlp-service.test.ts)
+**Cobertura**: 17 tests
 - Detección de intenciones (gasto/ingreso)
-- Extracción de montos
-- Detección de categorías
-- Niveles de confianza
+- Extracción de montos (números y texto: "mil", "50k", "ochenta mil")
+- Detección de categorías (comida, transporte, salud, etc.)
 - Validación de comandos
-- Generación de confirmaciones
-- Generación de sugerencias
 - Detección de correcciones
-- Enriquecimiento con datos de BD
-- Validación de formato backend
+- Normalización de texto
 
-#### 3. Síntesis de Voz
-**Objetivo**: Verificar respuestas auditivas
-
-**Casos de Prueba**:
+**Casos de prueba**:
 ```javascript
-// Caso 1: Confirmación simple
-Input: Comando válido
-Expected: Audio con confirmación clara
+Input: "gasté 50000 en comida"
+Output: { type: "gasto", amount: 50000, category: "Alimentos" }
 
-// Caso 2: Solicitud de información
-Input: Comando incompleto
-Expected: Audio solicitando datos faltantes
+Input: "pagué ochenta mil en transporte"
+Output: { type: "gasto", amount: 80000, category: "Transporte" }
 
-// Caso 3: Múltiples mensajes
-Input: Mensaje + sugerencias
-Expected: Ambos audios reproducidos secuencialmente sin cortes
+Input: "no, era 15000"
+Output: detección de corrección = true
 ```
 
-### Pruebas de Intención
+### 3. Balance Utils (balance-utils.test.ts)
+**Cobertura**: 18 tests
+- Conversión segura a números (safeNumber)
+- Validación de números (validateNumber)
+- Cálculo de balance con transacciones
+- Reversión de efectos de transacciones
+- Validación de balances
+- Formateo para logging
 
-**Test 1: Detección de Gastos**
+**Casos críticos**:
+- Manejo de valores NaN/undefined/null
+- Prevención de balances negativos inadvertidos
+- Validación de tipos de transacción
+
+### 4. Format Utils (format.test.ts)
+**Cobertura**: 8 tests
+- Formateo de moneda colombiana (COP)
+- Formateo de fechas en español
+- Formateo corto de fechas
+- Conversión a formato ISO para inputs
+
+**Ejemplos**:
 ```typescript
-parseVoiceCommand("gasté 50000 pesos en una hamburguesa")
-// Expected Output:
-{
-  intention: "gasto",
-  transactionType: "gasto",
-  amount: 50000,
-  categoryName: "Alimentos",
-  description: "gasté 50000 pesos en una hamburguesa",
-  confidence: "alta"
+formatCurrency(50000) // "$50.000 COP"
+formatDate("2024-01-15") // "15 de enero de 2024"
+formatDateShort("2024-01-15") // "15/01/2024"
+```
+
+### 5. OCR Utils (ocr-utils.test.ts)
+**Cobertura**: 15 tests
+- Parsing de montos colombianos (65.600 → 65600)
+- Manejo de símbolos de moneda ($)
+- Validación de fechas ISO
+- Validación de datos de recibos
+- Cálculo de confidence score
+- Detección de montos irreales
+
+**Lógica de parsing**:
+```typescript
+parseAmountFromText("$65.600") // 65600
+parseAmountFromText("1.500")   // 1500
+isValidDate("2024-01-15")      // true
+isValidDate("2024-13-01")      // false (mes inválido)
+```
+
+### 6. Savings Analyzer (savings-analyzer.test.ts)
+**Cobertura**: 13 tests
+- Detección de gastos que superan ingresos
+- Detección de gastos altos (>80% de ingresos)
+- Detección de gasto excesivo por categoría (>40%)
+- Detección de gastos pequeños frecuentes (latte factor)
+- Sugerencias de metas de ahorro
+- Cálculo de health score (0-100)
+- Generación de mensajes motivacionales
+- Ordenamiento por prioridad
+
+**Escenarios analizados**:
+```typescript
+// Balance negativo → warning (alta prioridad)
+// Gastos > 80% ingresos → warning con sugerencias
+// Gastos < 60% ingresos → success (felicitación)
+// Categoría > 40% gastos → warning específica
+// Ahorro > 20% ingresos → success
+```
+
+### 7. Chat Utils (chat-utils.test.ts)
+**Cobertura**: 15 tests
+- Validación de contexto financiero
+- Generación de resúmenes de contexto
+- Formateo de respuestas monetarias
+- Cálculo de ratio gastos/ingresos
+- Obtención de top categorías
+- Clasificación de estado financiero (excelente/bueno/regular/crítico)
+
+**Clasificación de estados**:
+- **Excelente**: Gastos < 60% ingresos, balance positivo
+- **Bueno**: Gastos 60-80% ingresos, balance positivo
+- **Regular**: Gastos 80-90% ingresos
+- **Crítico**: Gastos > 90% ingresos o balance negativo
+
+## Tests Manuales
+
+### OCR (Escaneo de Recibos)
+1. Navegar a `/transacciones`
+2. Click en "Escanear Recibo"
+3. Subir imagen de recibo
+4. Verificar:
+   - Extracción correcta de monto
+   - Detección de comercio
+   - Fecha válida
+   - Categoría sugerida apropiada
+   - Confidence score > 0.7
+
+**Casos de prueba**:
+- Recibo claro y legible (exitoso)
+- Recibo con mala iluminación (exitoso)
+- Imagen borrosa (debe rechazarse)
+- Múltiples formatos (PDF, JPG, PNG)
+
+### Asistente de Voz
+1. Click en ícono de micrófono
+2. Probar comandos:
+
+```
+"gasté 50000 en comida" (válido)
+"recibí 1000000 de salario" (válido)
+"pagué ochenta mil en transporte" (válido)
+"gastó cincuenta lucas en entretenimiento" (válido)
+"hola cómo estás" (debe detectar comando inválido)
+```
+
+**Verificar**:
+- Transcripción correcta (Web Speech API)
+- Procesamiento NLP exitoso
+- Creación de transacción
+- Confirmación por voz (ElevenLabs TTS)
+- Manejo de errores (comando no entendido)
+
+### Autenticación
+```
+Login con credenciales válidas (exitoso)
+Login con credenciales inválidas (debe fallar)
+Logout exitoso
+Protección de rutas (redirect a /login si no autenticado)
+Sesión persiste en recargas
+```
+
+### Chat Financiero
+1. Abrir chat en dashboard
+2. Probar consultas:
+
+```
+"¿Cuánto gasté en comida este mes?"
+"Muéstrame mi balance"
+"¿En qué categoría gasto más?"
+"Dame tips para ahorrar"
+```
+
+**Verificar**:
+- Respuestas contextuales
+- Datos correctos de la BD
+- Latencia < 3s
+- Manejo de errores de IA
+
+## Estrategia de Testing
+
+### Unit Tests
+**Ubicación**: `tests/`
+**Framework**: Custom TypeScript (sin dependencias externas)
+**Cobertura**: ~86 tests unitarios en 1,270 líneas de código
+
+**Características**:
+- Todos en TypeScript para consistencia
+- Sin modificaciones a BD (READ-ONLY)
+- Sin dependencias de servicios externos
+- Ejecución rápida (< 10 segundos total)
+- Framework propio con test() y assert()
+
+**Componentes cubiertos**:
+- Lógica de negocio (balance, cálculos)
+- Parsing y validación (OCR, NLP, formatos)
+- Análisis financiero (savings, health score, insights)
+- Utilidades de chat (contexto, clasificación)
+
+### Manual Testing
+**Enfoque**: UI/UX, features complejas (OCR, voz, chat)
+**Checklist**: Ver sección Tests Manuales arriba
+
+### E2E Testing (Pendiente)
+**Propuesta**: Playwright o Cypress
+**Prioridad**: Media (después de features core)
+
+## CI/CD y GitHub Actions
+
+### GitHub Actions - Versioning Workflow
+**Archivo**: `.github/workflows/versioning.yml`
+
+**Triggers**:
+- Push a `main`
+- Cambios en `version.json`
+
+**Pipeline**:
+```yaml
+1. Checkout código
+2. Setup Node.js 18
+3. Sync version.json → package.json
+4. Git tag automático
+5. GitHub Release con changelog
+```
+
+**NO ejecuta tests automáticamente** - El workflow solo maneja versionado y releases.
+
+**IMPORTANTE**: Los tests en `tests/` son para desarrollo local únicamente. No interfieren con el workflow de versioning porque:
+- No están en el pipeline de CI/CD
+- Son read-only (no modifican BD)
+- Solo se ejecutan manualmente con `npm test`
+
+### Para agregar tests al CI/CD (futuro)
+Si en el futuro quieres ejecutar tests automáticamente en GitHub Actions:
+
+```yaml
+# Agregar paso antes de crear release
+- name: Run tests
+  run: npm test
+  env:
+    DATABASE_URL: ${{ secrets.DATABASE_URL }}
+```
+
+Pero ten en cuenta:
+- Necesitas configurar `DATABASE_URL` en GitHub Secrets
+- Los tests de BD verificarían la BD de producción (read-only)
+- Mejor opción: crear BD de test separada
+
+## Debugging
+
+### Logs de Desarrollo
+```typescript
+// En desarrollo
+console.log("Debug:", variable)
+
+// En producción (API Routes)
+try {
+  // código
+} catch (error) {
+  console.error("Error en endpoint:", error)
+  return Response.json({ error: "Internal error" }, { status: 500 })
 }
 ```
 
-**Test 2: Detección de Ingresos**
-```typescript
-parseVoiceCommand("recibí 1000000 de salario")
-// Expected Output:
-{
-  intention: "ingreso",
-  transactionType: "ingreso",
-  amount: 1000000,
-  categoryName: "Salario",
-  confidence: "alta"
-}
-```
-
-**Test 3: Detección de Transporte**
-```typescript
-parseVoiceCommand("pagué 80000 en transporte")
-// Expected Output:
-{
-  intention: "gasto",
-  amount: 80000,
-  categoryName: "Transporte",
-  confidence: "alta"
-}
-```
-
-### Pruebas de Validación
-
-**Test 4: Comando Completo (Válido)**
-```typescript
-const parsed = parseVoiceCommand("gasté 50000 en hamburguesa")
-const validation = validateParsedCommand(parsed)
-// Expected: validation.valid === true
-// Expected: validation.missingFields.length === 0
-```
-
-**Test 5: Comando Incompleto (Falta Monto)**
-```typescript
-const parsed = parseVoiceCommand("gasté en comida")
-const validation = validateParsedCommand(parsed)
-// Expected: validation.valid === false
-// Expected: validation.missingFields.includes("monto")
-```
-
-**Test 6: Comando sin Categoría**
-```typescript
-const parsed = parseVoiceCommand("gasté 25000")
-// Expected: categoryName === undefined
-// Expected: confidence === "media"
-```
-
-### Pruebas de Confirmación y Sugerencias
-
-**Test 7: Generación de Mensaje de Confirmación**
-```typescript
-const parsed = parseVoiceCommand("gasté 50000 en hamburguesa")
-const message = generateConfirmationMessage(parsed)
-// Expected: message.includes("gasto")
-// Expected: message.includes("50")
-// Expected: message.includes("Alimentos")
-```
-
-**Test 8: Generación de Sugerencias**
-```typescript
-const parsed = parseVoiceCommand("gasté en comida")
-const suggestions = generateSuggestions(parsed)
-// Expected: suggestions.length > 0
-// Expected: suggestions incluye referencia a "monto"
-```
-
-### Pruebas de Corrección
-
-**Test 9: Detección de Corrección**
-```typescript
-detectCorrection("no, era 15000")
-// Expected Output:
-{
-  isCorrection: true,
-  field: "amount",
-  newValue: 15000
-}
-```
-
-**Test 10: Aplicación de Corrección**
-```typescript
-const original = parseVoiceCommand("gasté 50000 en comida")
-const correction = detectCorrection("no, era 15000")
-const corrected = applyCorrection(original, correction)
-// Expected: corrected.amount === 15000
-// Expected: otros campos permanecen igual
-```
-
-### Pruebas de Contexto Pendiente
-
-**Test 11: Preservación de Contexto (Múltiples Cuentas)**
-```typescript
-// Escenario: Usuario tiene 2 cuentas (Nu, Bancolombia)
-Input: "recibí 5000 por ventas"
-Expected: Sistema pregunta "¿En cuál cuenta?"
-          Contexto guardado: {amount: 5000, category: "Ventas"}
-
-Input respuesta: "en nu"
-Expected: Sistema combina contexto + cuenta
-          Resultado: {amount: 5000, category: "Ventas", account: "Nu"}
-```
-
-**Logs esperados**:
-```
-[Voice UI] ===== INICIO DE PROCESAMIENTO =====
-[Voice UI] Transcripción: recibí 5000 por ventas
-[Voice UI] Comando pendiente actual (state): null
-[Voice UI] Comando pendiente actual (ref): null
-[Voice UI] ⬅️ Respuesta recibida: {needsAdditionalInfo: true}
-[Voice UI] 💾 Guardando comando como pendiente (falta info)
-
-[Voice UI] ===== INICIO DE PROCESAMIENTO =====
-[Voice UI] Transcripción: en nu
-[Voice UI] Comando pendiente actual (ref): {amount: 5000, category: "Ventas"}
-[Voice UI] ➡️ Enviando respuesta con contexto pendiente
-[Voice UI] ⬅️ Respuesta recibida: {needsConfirmation: true}
-[Voice UI] 🧹 Limpiando comando pendiente
-```
-
----
-
-## 🧬 Testing de NLP Service
-
-### Suite de Tests Completa
-
-**Ubicación**: `lib/__tests__/nlp-service.test.ts`
-
-**Ejecución**:
+### Debug de Tests
 ```bash
-npx tsx lib/__tests__/nlp-service.test.ts
+# Ejecutar suite específica directamente
+npx tsx tests/nlp-service.test.ts
+npx tsx tests/balance-utils.test.ts
+npx tsx tests/savings-analyzer.test.ts
+
+# Ver output detallado
+npm test
 ```
 
-### Tests Implementados (37 total)
-
-#### Grupo 1: Detección de Intenciones (5 tests)
-1. ✅ Detectar gasto simple
-2. ✅ Detectar ingreso de salario
-3. ✅ Detectar gasto en transporte
-4. ✅ Detectar gasto en servicios
-5. ✅ Comando sin categoría clara
-
-#### Grupo 2: Extracción de Montos (8 tests)
-6. ✅ Monto con puntos: "50.000"
-7. ✅ Monto con comas: "50,000"
-8. ✅ Monto con espacios: "50 000"
-9. ✅ Monto sin separadores: "50000"
-10. ✅ Monto con palabra "mil": "50 mil"
-11. ✅ Monto con "millón": "1 millón"
-12. ✅ Monto muy grande: "1500000"
-13. ✅ Monto con decimales: "50.50"
-
-#### Grupo 3: Detección de Categorías (12 tests)
-14. ✅ Alimentos: hamburguesa, pizza, comida
-15. ✅ Transporte: taxi, uber, gasolina
-16. ✅ Servicios: luz, internet, netflix
-17. ✅ Salario: salario, sueldo, nómina
-18. ✅ Salud: medicina, doctor, farmacia
-19. ✅ Entretenimiento: cine, juegos
-20. ✅ Educación: universidad, libro
-21. ✅ Vivienda: arriendo, renta
-22. ✅ Ropa: camisa, zapatos
-23. ✅ Otros: varios, general
-24. ✅ Freelance: trabajo, consultoría
-25. ✅ Ventas: venta, vendí
-
-#### Grupo 4: Validación (4 tests)
-26. ✅ Comando completo válido
-27. ✅ Comando sin monto (inválido)
-28. ✅ Comando sin categoría (válido si tiene monto)
-29. ✅ Comando vacío (inválido)
-
-#### Grupo 5: Confirmación y Sugerencias (3 tests)
-30. ✅ Generar mensaje de confirmación
-31. ✅ Generar sugerencias para comando incompleto
-32. ✅ Sugerencias contextuales
-
-#### Grupo 6: Correcciones (2 tests)
-33. ✅ Detectar corrección de monto
-34. ✅ Aplicar corrección
-
-#### Grupo 7: Enriquecimiento con BD (2 tests)
-35. ✅ Asignar IDs de categoría desde BD
-36. ✅ Asignar ID de cuenta (una sola cuenta)
-
-#### Grupo 8: Validación Backend (1 test)
-37. ✅ Validar formato para crear transacción
-
----
-
-## 🔗 Testing de Integración
-
-### Prueba de Conexión a Base de Datos
-
-**Script**: `scripts/test-connection.js`
-
-**Ejecución**:
+### Debug de NLP
 ```bash
-node scripts/test-connection.js
+# Test comando específico
+npm run test:nlp
 ```
 
-**Casos de Prueba**:
-
-**Caso 1: Con DATABASE_URL configurado**
-```
-✅ Conexión exitosa a Neon
-Database: finanzas_db
-Host: ep-example-123.us-east-2.aws.neon.tech
-```
-
-**Caso 2: Sin DATABASE_URL**
-```
-⚠️  No hay DATABASE_URL configurado
-Usando datos de demostración (mock data)
-```
-
-**Caso 3: DATABASE_URL inválido**
-```
-❌ Error de conexión
-Detalles: [error específico]
-```
-
-### Prueba de API Routes
-
-**Endpoint**: `/api/voice/process-command`
-
-**Test 1: Comando Válido**
-```bash
-curl -X POST http://localhost:3000/api/voice/process-command \
-  -H "Content-Type: application/json" \
-  -d '{
-    "transcription": "gasté 50000 en comida"
-  }'
-```
-
-**Expected Response**:
-```json
-{
-  "success": true,
-  "message": "Voy a registrar un gasto de $50,000 pesos...",
-  "parsedCommand": {
-    "intention": "gasto",
-    "amount": 50000,
-    "categoryName": "Alimentos"
-  },
-  "needsConfirmation": true
-}
-```
-
-**Test 2: Comando Incompleto**
-```bash
-curl -X POST http://localhost:3000/api/voice/process-command \
-  -H "Content-Type: application/json" \
-  -d '{
-    "transcription": "gasté en comida"
-  }'
-```
-
-**Expected Response**:
-```json
-{
-  "success": false,
-  "message": "Me falta información. monto...",
-  "suggestions": ["Por favor indica el monto..."]
-}
-```
-
-### Prueba de Text-to-Speech
-
-**Endpoint**: `/api/voice/text-to-speech`
-
-**Test**:
-```bash
-curl -X POST http://localhost:3000/api/voice/text-to-speech \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "Hola, soy tu asistente financiero"
-  }' \
-  --output test-audio.mp3
-```
-
-**Validación**:
-- Archivo `test-audio.mp3` creado
-- Tamaño > 0 bytes
-- Audio reproducible
-- Voz clara en español
-
----
-
-## 🖱️ Testing Manual
-
-### Checklist de Pruebas de Usuario
-
-#### Asistente de Voz - Flujo Básico
-- [ ] Abrir aplicación
-- [ ] Hacer clic en botón flotante de micrófono
-- [ ] Permitir acceso al micrófono (primera vez)
-- [ ] Decir: "gasté 50000 en comida"
-- [ ] Verificar transcripción mostrada
-- [ ] Escuchar confirmación de voz
-- [ ] Ver información detectada en pantalla
-- [ ] Hacer clic en "Confirmar"
-- [ ] Verificar mensaje de éxito
-- [ ] Verificar transacción en lista
-
-#### Asistente de Voz - Comando Incompleto
-- [ ] Decir: "gasté en comida"
-- [ ] Escuchar solicitud de información faltante
-- [ ] Ver sugerencias en pantalla
-- [ ] Hacer clic en "Responder de nuevo"
-- [ ] Decir: "50000"
-- [ ] Verificar que combina la información
-- [ ] Confirmar transacción
-
-#### Asistente de Voz - Múltiples Cuentas
-- [ ] Tener al menos 2 cuentas creadas (ej: Nu, Bancolombia)
-- [ ] Decir: "recibí 5000 por ventas"
-- [ ] Sistema pregunta: "¿En cuál cuenta?"
-- [ ] Ver sugerencias: "en nu", "en bancolombia"
-- [ ] Hacer clic en "Responder de nuevo"
-- [ ] Decir: "en nu"
-- [ ] Verificar que muestra todos los datos: monto + categoría + cuenta
-- [ ] Confirmar y verificar transacción creada en cuenta Nu
-
-#### Asistente de Voz - Corrección
-- [ ] Decir: "gasté 50000 en comida"
-- [ ] Ver confirmación
-- [ ] Hacer clic en "Corregir"
-- [ ] Decir: "no, era 15000"
-- [ ] Verificar que monto se actualizó a 15000
-- [ ] Confirmar transacción corregida
-
-#### Consultas por Voz
-- [ ] Decir: "cuál es mi balance"
-- [ ] Escuchar respuesta con balance total
-- [ ] Decir: "cuánto gasté hoy"
-- [ ] Escuchar total de gastos del día
-- [ ] Decir: "cuál fue mi último gasto"
-- [ ] Escuchar detalles del último gasto
-
-#### Control de Audio
-- [ ] Iniciar comando de voz
-- [ ] Mientras reproduce audio de confirmación
-- [ ] Hacer clic en "Detener audio"
-- [ ] Verificar que el audio se detiene inmediatamente
-
----
-
-## ⚙️ CI/CD Pipeline
-
-### GitHub Actions Workflow
-
-**Archivo**: `.github/workflows/ci.yml`
-
-**Jobs Ejecutados**:
-
-#### 1. Lint (ESLint)
-```yaml
-- Verifica código con ESLint
-- Detecta errores de sintaxis
-- Valida reglas de estilo
-```
-
-**Comando**: `npm run lint`
-
-#### 2. Type Check (TypeScript)
-```yaml
-- Compila TypeScript sin generar archivos
-- Verifica tipos en todo el proyecto
-- Detecta errores de tipado
-```
-
-**Comando**: `npx tsc --noEmit`
-
-#### 3. Build (Next.js)
-```yaml
-- Construye aplicación para producción
-- Verifica que no hay errores de build
-- Valida todas las rutas y componentes
-```
-
-**Comando**: `npm run build`
-
-#### 4. Validate Structure
-```yaml
-- Verifica archivos requeridos existan
-- Valida estructura de documentación
-- Confirma presencia de README, LICENSE, etc.
-```
-
-#### 5. Security Check
-```yaml
-- Escanea código en busca de secrets expuestos
-- Detecta API keys, contraseñas, tokens
-- Previene commits de información sensible
-```
-
-### Triggers del Pipeline
-
-```yaml
-on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
-```
-
-**Ejecución**:
-- Cada push a `main` o `develop`
-- Cada Pull Request a estas branches
-- Manualmente desde GitHub Actions tab
-
-### Badges de Estado
-
-```markdown
-[![Build Status](https://github.com/ManuhCardoso1501/FinanzasPersonales-PyI-II/actions/workflows/ci.yml/badge.svg)](https://github.com/ManuhCardoso1501/FinanzasPersonales-PyI-II/actions/workflows/ci.yml)
-```
-
----
-
-## 🗄️ Testing de Base de Datos
-
-### Pruebas de Queries
-
-#### Test 1: Obtener Todas las Cuentas
+### Debug de OCR
 ```typescript
-const accounts = await dbQueries.getAccounts()
-// Expected: Array de cuentas
-// Expected: Cada cuenta tiene {id, name, type, balance}
+// En ocr-service.ts
+console.log("Vision API Response:", response)
+console.log("Extracted data:", extractedData)
 ```
 
-#### Test 2: Crear Transacción
+### Debug de Base de Datos
+```bash
+# Verificar transacciones
+psql $DATABASE_URL -c "SELECT * FROM transactions LIMIT 10;"
+
+# Verificar usuarios
+psql $DATABASE_URL -c "SELECT id, username, email FROM usuarios;"
+
+# Test de conexión
+npm run test:db
+```
+
+## Mejores Prácticas
+
+### Antes de Commit
+```bash
+# 1. Ejecutar tests locales
+npm test
+
+# 2. Verificar build
+npm run build
+
+# 3. Verificar lint
+npm run lint
+```
+
+### Testing en Features Nuevas
+1. **Escribir tests primero** (si es lógica de negocio)
+2. **Test manual exhaustivo** (si es UI/UX)
+3. **Documentar casos de prueba** en PR
+4. **Verificar edge cases** (valores null, strings vacíos, etc.)
+
+### Agregar Nuevos Tests
+Para agregar un nuevo test unitario:
+
 ```typescript
-const transaction = await dbQueries.createTransaction({
-  type: "gasto",
-  amount: 50000,
-  categoryId: 1,
-  accountId: 1,
-  description: "Test"
+// tests/mi-nuevo-test.ts
+#!/usr/bin/env tsx
+
+function test(name: string, fn: () => void) {
+  try {
+    fn()
+    console.log(`[PASS] ${name}`)
+  } catch (error: any) {
+    console.log(`[FAIL] ${name}`)
+    console.log(`       ${error.message}`)
+    process.exit(1)
+  }
+}
+
+function assert(condition: boolean, message: string) {
+  if (!condition) throw new Error(message)
+}
+
+console.log("\n=== Tests de Mi Componente ===\n")
+
+test("descripción del test", () => {
+  // tu lógica aquí
+  assert(resultado === esperado, "mensaje de error")
 })
-// Expected: Transaction creada con ID
-// Expected: Balance de cuenta actualizado
+
+console.log("\n[OK] Todos los tests pasaron\n")
 ```
 
-#### Test 3: Conversión de Tipos
+Luego agregar a `tests/run-all.ts`:
 ```typescript
-// PostgreSQL retorna NUMERIC como string
-const account = await dbQueries.getAccountById(1)
-const balance = Number(account.balance)
-// Expected: balance es tipo number
-// Expected: operaciones matemáticas funcionan correctamente
+const tests = [
+  // ... tests existentes
+  { name: "Mi Componente", script: "tests/mi-nuevo-test.ts" },
+]
 ```
 
-### Validación de Tipo de Datos
+## Seguridad de los Tests
 
-**Problema Conocido**: PostgreSQL retorna `NUMERIC` como string
+### Tests NO dañan la BD porque:
 
-**Solución Implementada**:
-```typescript
-// Siempre convertir a número antes de operaciones
-const totalBalance = accounts.reduce((sum, account) => {
-  return sum + Number(account.balance) // ✓ Conversión explícita
-}, 0)
-```
+1. **test-connection.ts**: Solo ejecuta SELECT (consultas de lectura)
+   - `SELECT NOW()` - Obtiene hora del servidor
+   - `SELECT table_name FROM information_schema.tables` - Lista tablas
+   - `SELECT COUNT(*) FROM ...` - Cuenta registros
+   - NO ejecuta INSERT, UPDATE, DELETE, DROP
 
-**Tests de Regresión**:
-- ✅ Balance total se calcula correctamente
-- ✅ No hay concatenación de strings (ej: "0" + "5000" = "05000")
-- ✅ toLocaleString() funciona correctamente
-- ✅ Consultas de voz muestran montos correctos
+2. **Todos los demás tests**: No acceden a BD
+   - Solo prueban lógica pura y funciones auxiliares
+   - No requieren conexión externa
+   - Completamente aislados
 
----
+3. **Ejecutar tests antes de commit es seguro**
+   - No alteran datos existentes
+   - No crean registros temporales
+   - No afectan producción
 
-## 📊 Métricas de Testing
+## Métricas de Cobertura
 
-### Cobertura de Tests
+**Total**: ~86 tests unitarios en 7 suites
+**Líneas de código**: 1,270 líneas en tests/
 
-| Componente | Tests | Estado |
-|-----------|-------|--------|
-| NLP Service | 37 | ✅ 100% |
-| Voice Recorder Hook | Manual | ✅ |
-| API Routes | Manual | ✅ |
-| Database Queries | Manual | ✅ |
-| UI Components | Manual | ✅ |
+**Por componente**:
+- NLP Service: 17 tests (comandos de voz)
+- Balance Utils: 18 tests (cálculos financieros)
+- Savings Analyzer: 13 tests (análisis de ahorro)
+- Chat Utils: 15 tests (contexto financiero)
+- OCR Utils: 15 tests (parsing de recibos)
+- Format Utils: 8 tests (formateo)
+- DB Connection: 1 suite (conectividad)
 
-### Test Results
+**Componentes críticos cubiertos**:
+- Lógica de negocio: 100%
+- Parsing y validación: 100%
+- Análisis financiero: 100%
+- Formateo: 100%
 
-```
-✅ Total Tests: 37
-✅ Passing: 37
-❌ Failing: 0
-⏭️  Skipped: 0
-```
+**Componentes sin cobertura automatizada**:
+- API Routes (requieren mocks de BD)
+- Componentes React (requieren testing library)
+- Integraciones externas (Gemini API, ElevenLabs)
 
----
+## Roadmap de Testing
 
-## 🐛 Debugging y Troubleshooting
+**Completado**:
+- NLP service tests
+- Database connection tests
+- Balance calculations tests
+- Format utilities tests
+- OCR parsing tests
+- Savings analyzer tests
+- Chat utilities tests
 
-### Logs de Debugging
+**Prioridad Alta** (Pendiente):
+- API Routes tests con mocks
+- Auth flow tests
 
-**Activar logs en desarrollo**:
-```typescript
-// Voice Assistant logs automáticos
-[Voice UI] ===== INICIO DE PROCESAMIENTO =====
-[Voice UI] Transcripción: ...
-[Voice UI] ➡️ Enviando respuesta con contexto pendiente
-[Voice UI] ⬅️ Respuesta recibida
-[Voice UI] 💾 Guardando comando como pendiente
-[Voice UI] 🧹 Limpiando comando pendiente
-[Voice UI] ===== FIN DE PROCESAMIENTO =====
+**Prioridad Media** (Pendiente):
+- E2E con Playwright
+- Component tests con React Testing Library
+- Integration tests con servicios externos
 
-// Backend logs
-[Voice] Transacción creada: ID=X, Tipo=ingreso, Monto=5000
-[Voice] Actualizando balance: Cuenta=1 (Nu), Balance anterior=100000
-[Voice] Balance actualizado exitosamente
-```
+**Prioridad Baja** (Pendiente):
+- Visual regression tests
+- Load testing
+- Security testing automatizado
+- Performance benchmarks
 
-### Problemas Comunes y Soluciones
+## Recursos
 
-**Problema 1: Audio se corta**
-```typescript
-// Solución: Detener audio anterior antes de reproducir nuevo
-if (audioRef.current && !audioRef.current.paused) {
-  audioRef.current.pause()
-}
-```
-
-**Problema 2: Contexto se pierde**
-```typescript
-// Solución: Usar useRef para preservar estado entre renders
-const pendingCommandRef = useRef<ParsedVoiceCommand | null>(null)
-useEffect(() => {
-  pendingCommandRef.current = pendingCommand
-}, [pendingCommand])
-```
-
-**Problema 3: Balance muestra "05000" en vez de "5000"**
-```typescript
-// Solución: Convertir a Number antes de operaciones
-const total = transactions.reduce((sum, t) => 
-  sum + Number(t.amount), 0  // ✓ Conversión explícita
-)
-```
-
----
-
-## 📝 Conclusión
-
-El proyecto cuenta con una cobertura de testing exhaustiva que incluye:
-
-- ✅ 37 tests automatizados del servicio NLP
-- ✅ Pipeline de CI/CD con 5 jobs
-- ✅ Tests manuales documentados
-- ✅ Scripts de validación de BD
-- ✅ Logging completo para debugging
-
-**Estado General**: ✅ Todos los tests pasando
-
-**Próximos Pasos**:
-- Agregar tests E2E con Playwright
-- Implementar tests de performance
-- Agregar tests de accesibilidad
-- Configurar coverage reports automáticos
+- [Directorio de Tests](../tests/) - Código fuente de todos los tests
+- [Test Runner](../tests/run-all.ts) - Orquestador principal
+- [NLP Tests](../tests/nlp-service.test.ts) - Referencia para tests de parsing
+- [Savings Tests](../tests/savings-analyzer.test.ts) - Referencia para tests de lógica compleja
